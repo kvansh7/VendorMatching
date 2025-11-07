@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+/* ---------- paste below into src/index.css ---------- */
+
+/* Neutral professional palette */
+:root {
+  --bg: #0d1117;          /* dark base */
+  --surface: rgba(255, 255, 255, 0.03);
+  --panel: rgba(255, 255, 255, 0.05);
+  --glass: rgba(255, 255, 255, 0.08);
+  --muted: #9ca3af;
+
+  --primary: #2563eb;     /* soft blue accent */
+  --primary-hover: #1d4ed8;
+}
+
+/* Main background */
+.app-bg {
+  min-height: 100vh;
+  background: var(--bg);
+  color: #f9fafb;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Subtle light spots instead of gradients */
+.app-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 25% 20%,
+    rgba(255, 255, 255, 0.05),
+    transparent 50%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+.app-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 75% 80%,
+    rgba(255, 255, 255, 0.04),
+    transparent 50%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Glass cards */
+.glass-card {
+  background: var(--surface);
+  border: 1px solid var(--glass);
+  backdrop-filter: blur(12px);
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+  z-index: 1;
+}
+.glass-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* Headings */
+.hero-title {
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-size: clamp(2.2rem, 6vw, 3.2rem);
+  color: #ffffff;
+}
+.hero-subtitle {
+  font-size: 1.1rem;
+  color: var(--muted);
+  margin-top: 0.75rem;
+  max-width: 600px;
+}
+
+/* Buttons */
+.btn {
+  display: inline-block;
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.75rem;
+  transition: all 0.2s ease;
+  text-align: center;
+  cursor: pointer;
+  text-decoration: none;
+}
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--primary-hover);
+}
+.btn-outline {
+  border: 1px solid var(--glass);
+  color: #f9fafb;
+}
+.btn-outline:hover {
+  background: var(--panel);
+}
+
+/* Icon container */
+.glow-icon {
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  font-size: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+/* Stats */
+.stat-number {
+  font-weight: 700;
+  font-size: 1.6rem;
+  color: white;
+}
+.stat-label {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+/* Muted text */
+.text-muted {
+  color: var(--muted);
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .hero-title {
+    font-size: 1.8rem;
+  }
+  .glass-card {
+    padding: 1rem;
+  }
+}
+
+/* ---------- end paste ---------- */

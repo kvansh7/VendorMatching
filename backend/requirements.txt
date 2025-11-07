@@ -1,0 +1,26 @@
+# Core
+flask
+flask-cors
+python-dotenv
+pymongo
+dnspython
+requests
+
+# LangChain + Providers
+langchain
+langchain-core
+langchain-community
+langchain-openai
+langchain-google-genai
+langchain-ollama
+openai
+
+# ML / Embeddings
+numpy
+scikit-learn
+
+# Document Loaders
+unstructured
+python-docx
+pypdf
+docx2txt

@@ -29,8 +29,6 @@ import tempfile
 import io
 from openai import OpenAI
 
-# Initialize OpenAI client
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)
@@ -45,6 +43,8 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+# Initialize OpenAI client
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # Configuration
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_FILE_SIZE', 16 * 1024 * 1024))  # 16MB default
 ALLOWED_EXTENSIONS = {'pdf', 'pptx', 'ppt', 'docx'}
@@ -75,6 +75,14 @@ try:
     ps_analysis_collection = db['ps_analysis']
     vendor_embeddings_collection = db['vendor_embeddings']
     ps_embeddings_collection = db['ps_embeddings']
+    # LLM-specific collections
+    vendor_capabilities_openai = db["vendor_capabilities_openai"]
+    vendor_capabilities_gemini = db["vendor_capabilities_gemini"]
+    vendor_capabilities_ollama = db["vendor_capabilities_ollama"]
+
+    ps_analysis_openai = db["ps_analysis_openai"]
+    ps_analysis_gemini = db["ps_analysis_gemini"]
+    ps_analysis_ollama = db["ps_analysis_ollama"]
 except Exception as e:
     logger.error(f"MongoDB connection failed: {str(e)}")
     raise
@@ -244,21 +252,38 @@ def create_text_representation(data: Dict[str, Any]) -> str:
         if key != "name":
             parts.append(f"{key}: {json.dumps(value)}" if isinstance(value, (list, dict)) else f"{key}: {value}")
     return " ".join(parts)
+
+def get_llm_collections(provider: str):
+    """
+    Dynamically select MongoDB collections based on the LLM provider.
+    """
+    db = client["vendor_matching_db"]
+
+    collections = {
+        "vendor_capabilities": db[f"vendor_capabilities_{provider}"],
+        "ps_analysis": db[f"ps_analysis_{provider}"]
+    }
+    return collections
 # ============================================================================
 # CORE PROCESSING FUNCTIONS (UPDATED)
 # ============================================================================
 
-def process_vendor_profile(vendor_name: str, vendor_text: str, llm) -> Tuple[Dict[str, Any], np.ndarray]:
+def process_vendor_profile(vendor_name: str, vendor_text: str, llm, llm_provider: str) -> Tuple[Dict[str, Any], np.ndarray]:
     """
-    Extract vendor capabilities using the selected LLM 
-    and generate embedding via OpenAI embeddings.
+    Extract vendor capabilities using the selected LLM (OpenAI, Gemini, or Ollama)
+    and generate embeddings using OpenAI (stored in a shared embeddings collection).
     """
     vendor_hash = get_content_hash(f"{vendor_name}:{vendor_text}")
 
-    # --- Check cached analysis ---
+    # --- Get provider-specific collection for capabilities ---
+    collections = get_llm_collections(llm_provider)
+    vendor_capabilities_collection = collections["vendor_capabilities"]
+
+    # --- Check cached analysis in LLM-specific collection ---
     capabilities = load_cached_analysis(vendor_capabilities_collection, vendor_hash)
     if not capabilities:
-        logger.info(f"🔍 Analyzing vendor capabilities for: {vendor_name}")
+        logger.info(f"🔍 Analyzing vendor capabilities for: {vendor_name} using {llm_provider}")
+
         prompt = PromptTemplate.from_template("""
         From this vendor profile, extract:
         1. Key technical domains (e.g., NLP, CV, ML)
@@ -274,34 +299,40 @@ def process_vendor_profile(vendor_name: str, vendor_text: str, llm) -> Tuple[Dic
         chain = prompt | llm | JsonOutputParser()
         capabilities = chain.invoke({"vendor_text": vendor_text})
         capabilities["name"] = vendor_name
+        capabilities["llm_provider"] = llm_provider
         save_analysis(vendor_capabilities_collection, vendor_hash, capabilities)
     else:
-        logger.info(f"✅ Using cached capabilities for: {vendor_name}")
+        logger.info(f"✅ Using cached vendor capabilities for {vendor_name} ({llm_provider})")
 
-    # --- Check cached embedding ---
+    # --- Check cached embedding (common OpenAI embeddings collection) ---
     embedding = load_embedding(vendor_embeddings_collection, vendor_hash)
     if embedding is None:
-        logger.info(f"🧠 Generating embedding for vendor: {vendor_name}")
+        logger.info(f"🧠 Generating embedding (OpenAI) for vendor: {vendor_name}")
         text_representation = create_text_representation(capabilities)
-        embedding = get_embedding(text_representation)
+        embedding = get_embedding(text_representation)  # always OpenAI embedding
         save_embedding(vendor_embeddings_collection, vendor_hash, embedding)
     else:
-        logger.info(f"✅ Using cached embedding for: {vendor_name}")
+        logger.info(f"✅ Using cached embedding (OpenAI) for vendor: {vendor_name}")
 
     return capabilities, embedding
 
-
-def process_problem_statement(problem_statement: str, llm) -> Tuple[Dict[str, Any], np.ndarray]:
+def process_problem_statement(problem_statement: str, llm, llm_provider: str) -> Tuple[Dict[str, Any], np.ndarray]:
     """
-    Analyze a problem statement using selected LLM 
-    and generate its embedding with OpenAI embeddings.
+    Analyze a problem statement using the selected LLM (OpenAI/Gemini/Ollama)
+    and generate its embedding using OpenAI. 
+    Analysis -> saved to provider-specific ps_analysis_<provider>
+    Embedding -> saved to shared ps_embeddings collection
     """
     ps_hash = get_content_hash(problem_statement)
 
-    # --- Cached analysis check ---
+    # --- Get provider-specific analysis collection ---
+    collections = get_llm_collections(llm_provider)
+    ps_analysis_collection = collections["ps_analysis"]
+
+    # --- Check cached analysis in provider-specific collection ---
     analysis = load_cached_analysis(ps_analysis_collection, ps_hash)
     if not analysis:
-        logger.info("🧩 Analyzing problem statement with LLM...")
+        logger.info(f"🧩 Analyzing problem statement with {llm_provider}")
         prompt = PromptTemplate.from_template("""
         Analyze this problem statement and extract:
         1. Primary technical domains (e.g., NLP, CV, ML)
@@ -316,22 +347,27 @@ def process_problem_statement(problem_statement: str, llm) -> Tuple[Dict[str, An
         """)
         chain = prompt | llm | JsonOutputParser()
         analysis = chain.invoke({"problem_statement": problem_statement})
+
+        # tag + metadata
+        analysis["llm_provider"] = llm_provider
+        analysis["_hash"] = ps_hash
+
         save_analysis(ps_analysis_collection, ps_hash, analysis)
     else:
-        logger.info("✅ Using cached problem statement analysis")
+        logger.info(f"✅ Using cached problem statement analysis for provider={llm_provider}")
 
-    # --- Cached embedding check ---
+    # --- Check cached embedding in shared ps_embeddings collection ---
     embedding = load_embedding(ps_embeddings_collection, ps_hash)
     if embedding is None:
-        logger.info("🧠 Generating embedding for problem statement")
+        logger.info(f"🧠 Generating embedding (OpenAI) for problem statement")
         text_representation = create_text_representation(analysis)
+        # get_embedding should use OpenAI embeddings (per your design)
         embedding = get_embedding(text_representation)
         save_embedding(ps_embeddings_collection, ps_hash, embedding)
     else:
-        logger.info("✅ Using cached problem statement embedding")
+        logger.info("✅ Using cached problem statement embedding (shared OpenAI embeddings)")
 
     return analysis, embedding
-
 
 def shortlist_vendors(
     ps_embedding: np.ndarray,
@@ -373,16 +409,39 @@ def validate_matching_params(top_k: int, batch_size: int):
 
 
 def evaluate_shortlist(
-    ps_analysis: Dict[str, Any],
+    ps_id: str,
     shortlist: List[Dict[str, Any]],
     llm,
+    llm_provider: str,
     batch_size: int = 5,
     criteria: List[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
     """
-    RICH EVALUATION – Detailed, evidence-based, structured output
-    Uses .format() + JsonOutputParser → NO PromptTemplate issues
+    Evaluate shortlisted vendors dynamically using the specified LLM provider.
+    Automatically fetches provider-specific PS analysis and vendor capabilities.
     """
+    # --- Get provider-specific collections ---
+    collections = get_llm_collections(llm_provider)
+    vendor_capabilities_collection = collections["vendor_capabilities"]
+    ps_analysis_collection = collections["ps_analysis"]
+
+    # --- Fetch problem statement master doc (global collection) ---
+    ps_doc = ps_collection.find_one({"id": ps_id})
+    if not ps_doc:
+        raise ValueError(f"Problem statement ID '{ps_id}' not found")
+
+    problem_statement = ps_doc.get("full_statement", "")
+    ps_hash = get_content_hash(problem_statement)
+
+    # --- Load provider-specific PS analysis (cached or generate) ---
+    ps_analysis = load_cached_analysis(ps_analysis_collection, ps_hash)
+    if not ps_analysis:
+        logger.info(f"⚙️ PS analysis not found — generating for {llm_provider}")
+        ps_analysis, _ = process_problem_statement(problem_statement, llm, llm_provider)
+    else:
+        logger.info(f"✅ Using cached PS analysis for provider={llm_provider}")
+
+    # --- Default scoring criteria ---
     if not criteria or len(criteria) == 0:
         criteria = [
             {"key": "domain_fit", "label": "Domain Fit", "weight": 0.4},
@@ -391,23 +450,20 @@ def evaluate_shortlist(
             {"key": "scalability", "label": "Scalability", "weight": 0.1},
         ]
 
-    # Build JSON schema (plain string)
     json_fields = ",\n    ".join([f'"{c["key"]}": float' for c in criteria])
     criteria_lines = "\n".join([f"{i+1}. {c['label']} (0–100)" for i, c in enumerate(criteria)])
     weights = {c["key"]: float(c["weight"]) for c in criteria}
 
-    # RICH PROMPT – Expert evaluator, strict format
     RAW_PROMPT = """
-You are a senior procurement and technical due-diligence expert with 15+ years evaluating vendors for enterprise software projects.
+You are a senior technical evaluator with 15+ years of experience in enterprise vendor selection.
 
-YOUR TASK:
-1. Read the PROBLEM STATEMENT and VENDOR CAPABILITIES carefully.
-2. For EACH vendor, assign a score (0–100) to EVERY criterion:
-   - 0  = No alignment
-   - 50 = Partial / average fit
-   - 100 = Perfect, proven match
-3. Write a DETAILED justification (3–5 sentences) citing SPECIFIC evidence.
-4. List 3–5 STRENGTHS and 3–5 CONCERNS as bullet points (actionable, not generic).
+TASK:
+1. Analyze the PROBLEM STATEMENT and VENDOR CAPABILITIES.
+2. For each vendor, assign a score (0–100) for every criterion:
+   - 0  = no alignment
+   - 50 = partial fit
+   - 100 = perfect match
+3. Provide a short justification and list 3–5 strengths & concerns.
 
 PROBLEM STATEMENT:
 {ps_analysis}
@@ -418,25 +474,14 @@ VENDORS TO EVALUATE:
 CRITERIA (score 0–100):
 {criteria_lines}
 
-OUTPUT **exactly** this JSON array (no markdown, no extra text):
-
+OUTPUT STRICTLY IN JSON FORMAT:
 [
   {{
-    "name": "<exact vendor name from input>",
+    "name": "<vendor name>",
     {json_fields},
-    "justification": "<3–5 detailed sentences with evidence>",
-    "strengths": [
-      "<specific strength 1>",
-      "<specific strength 2>",
-      "<specific strength 3>",
-      "..."
-    ],
-    "concerns": [
-      "<specific concern 1>",
-      "<specific concern 2>",
-      "<specific concern 3>",
-      "..."
-    ]
+    "justification": "<3–5 sentences>",
+    "strengths": ["<point1>", "<point2>", "<point3>"],
+    "concerns": ["<point1>", "<point2>", "<point3>"]
   }}
 ]
 """.strip()
@@ -446,14 +491,52 @@ OUTPUT **exactly** this JSON array (no markdown, no extra text):
 
     for i in range(0, len(shortlist), batch_size):
         batch = shortlist[i:i + batch_size]
-        batch_caps = [v["vendor_capabilities"] for v in batch]
+        batch_names = [v["name"] for v in batch]
+
+        # --- Fetch/generate vendor capabilities for this batch (provider-specific) ---
+        vendor_caps = []
+        for name in batch_names:
+            # Try provider-specific capabilities first
+            vendor_doc = vendor_capabilities_collection.find_one({"name": name})
+
+            if not vendor_doc:
+                logger.warning(f"⚠️ Vendor '{name}' not found in {llm_provider} capabilities — generating dynamically")
+
+                # Find base vendor info from global vendor collection
+                base_vendor = vendors_collection.find_one({"name": name})
+                if not base_vendor:
+                    logger.error(f"❌ Base vendor '{name}' not found in master vendors collection. Skipping.")
+                    continue
+
+                try:
+                    # This function (you provided) will generate provider-specific capabilities
+                    # and save embedding into the shared vendor_embeddings_collection.
+                    cap, _ = process_vendor_profile(base_vendor["name"], base_vendor["text"], llm, llm_provider)
+
+                    # Make sure the capability doc has 'name' and 'llm_provider' fields (process_vendor_profile does this)
+                    cap["name"] = cap.get("name", base_vendor["name"])
+                    cap["llm_provider"] = llm_provider
+
+                    # Append the freshly generated capability doc
+                    vendor_caps.append(cap)
+
+                except Exception as e:
+                    logger.error(f"❌ Failed to generate capabilities for '{name}' with provider {llm_provider}: {e}")
+                    continue
+            else:
+                vendor_caps.append(vendor_doc)
+
+        # If no vendor capabilities available for this batch, skip evaluation
+        if not vendor_caps:
+            logger.warning(f"⚠️ No vendor capability documents available for batch {i // batch_size + 1}. Skipping.")
+            continue
 
         try:
-            logger.info(f"Evaluating batch {i // batch_size + 1} ({len(batch)} vendors)")
+            logger.info(f"🧮 Evaluating batch {i // batch_size + 1} ({len(vendor_caps)} vendors)")
 
             prompt_str = RAW_PROMPT.format(
                 ps_analysis=json.dumps(ps_analysis, ensure_ascii=False, indent=2),
-                vendor_batch=json.dumps(batch_caps, ensure_ascii=False, indent=2),
+                vendor_batch=json.dumps(vendor_caps, ensure_ascii=False, indent=2),
                 criteria_lines=criteria_lines,
                 json_fields=json_fields
             )
@@ -464,35 +547,24 @@ OUTPUT **exactly** this JSON array (no markdown, no extra text):
             if not isinstance(parsed, list):
                 parsed = [parsed] if isinstance(parsed, dict) else []
 
-            for j, item in enumerate(parsed):
-                if j >= len(batch):
-                    continue
+            for item in parsed:
+                name = item.get("name", "Unknown")
 
-                vendor = batch[j]
-                name = item.get("name", vendor.get("name", "Unknown"))
-
-                scores = {}
-                for c in criteria:
-                    val = item.get(c["key"])
-                    scores[c["key"]] = round(float(val), 1) if isinstance(val, (int, float)) and 0 <= val <= 100 else 0.0
+                scores = {
+                    c["key"]: round(float(item.get(c["key"], 0)), 1)
+                    if isinstance(item.get(c["key"]), (int, float))
+                    else 0.0
+                    for c in criteria
+                }
 
                 composite = round(sum(scores[k] * weights[k] for k in weights), 2)
 
                 result = {
-                    **vendor,
                     "name": name,
                     "composite_score": composite,
                     "justification": str(item.get("justification", "")).strip(),
-                    "strengths": [
-                        str(s).strip()
-                        for s in item.get("strengths", [])
-                        if str(s).strip()
-                    ],
-                    "concerns": [
-                        str(c).strip()
-                        for c in item.get("concerns", [])
-                        if str(c).strip()
-                    ],
+                    "strengths": [s.strip() for s in item.get("strengths", []) if str(s).strip()],
+                    "concerns": [c.strip() for c in item.get("concerns", []) if str(c).strip()],
                 }
 
                 for c in criteria:
@@ -501,15 +573,14 @@ OUTPUT **exactly** this JSON array (no markdown, no extra text):
                 results.append(result)
 
         except Exception as e:
-            logger.error(f"Batch {i // batch_size + 1} failed: {e}")
+            logger.error(f"⚠️ Batch {i // batch_size + 1} failed: {e}")
             for vendor in batch:
                 sim = vendor.get("semantic_similarity_score", 0) * 100
                 fallback = {
-                    **vendor,
                     "name": vendor.get("name", "Unknown"),
                     "composite_score": round(sim * 0.8, 1),
-                    "justification": "LLM evaluation failed. Score based on semantic similarity.",
-                    "strengths": ["Semantic match detected"],
+                    "justification": "LLM evaluation failed — fallback score from semantic similarity.",
+                    "strengths": ["Semantic similarity match detected"],
                     "concerns": ["LLM unavailable", "Score is approximate"],
                 }
                 for c in criteria:
@@ -1050,7 +1121,6 @@ def get_dashboard():
         logger.error(traceback.format_exc())
         return jsonify({"error": "Failed to fetch dashboard data"}), 500
 
-
 @app.route('/api/vendor_submission', methods=['POST'])
 def vendor_submission():
     """
@@ -1061,7 +1131,7 @@ def vendor_submission():
       - optional form field 'llm_provider' (openai/gemini/ollama)
     """
     try:
-        llm_provider = request.form.get("llm_provider", os.getenv("LLM_PROVIDER", "openai"))
+        llm_provider = request.form.get("llm_provider", os.getenv("LLM_PROVIDER", "openai")).lower()
         llm = get_llm_instance(llm_provider)
 
         if 'file' not in request.files or not request.form.get('vendor_name'):
@@ -1074,26 +1144,23 @@ def vendor_submission():
         file = request.files['file']
         validate_file(file)
 
-        # Read file bytes directly (in memory)
+        # Read file and extract text
         file_bytes = file.read()
-        file_ext = secure_filename(file.filename).rsplit('.', 1)[1]
-
-        # Process document in memory
+        file_ext = secure_filename(file.filename).rsplit('.', 1)[1].lower()
         text = load_document(file_bytes, file_ext)
+
+        # Store vendor raw data
         vendor_data = {"name": vendor_name, "text": text}
+        vendors_collection.update_one({"name": vendor_name}, {"$set": vendor_data}, upsert=True)
 
-        # Store in MongoDB
-        vendors_collection.update_one(
-            {"name": vendor_name},
-            {"$set": vendor_data},
-            upsert=True
-        )
+        # Process and cache with multi-LLM analysis + single OpenAI embedding
+        capabilities, embedding = process_vendor_profile(vendor_name, text, llm, llm_provider)
 
-        # Process vendor profile and cache (pass llm)
-        capabilities, embedding = process_vendor_profile(vendor_name, text, llm)
-
-        logger.info(f"Vendor '{vendor_name}' onboarded successfully (llm_provider={llm_provider})")
-        return jsonify({"message": f"Vendor '{vendor_name}' onboarded and cached!", "llm_provider": llm_provider}), 200
+        logger.info(f"✅ Vendor '{vendor_name}' onboarded successfully ({llm_provider})")
+        return jsonify({
+            "message": f"Vendor '{vendor_name}' onboarded successfully!",
+            "llm_provider": llm_provider
+        }), 200
 
     except ValueError as ve:
         logger.warning(f"Validation error: {str(ve)}")
@@ -1102,18 +1169,17 @@ def vendor_submission():
         logger.error(f"Vendor submission error: {str(e)}")
         logger.error(traceback.format_exc())
         return jsonify({"error": "Failed to process vendor submission"}), 500
-
-
+    
 @app.route('/api/ps_submission', methods=['POST'])
 def ps_submission():
     """
-    Submit and process problem statement.
+    Submit and process a problem statement.
     Body JSON should include: title, description, outcomes
     Optional: llm_provider in body (openai/gemini/ollama)
     """
     try:
         data = request.json or {}
-        llm_provider = data.get("llm_provider", os.getenv("LLM_PROVIDER", "openai"))
+        llm_provider = data.get("llm_provider", os.getenv("LLM_PROVIDER", "openai")).lower()
         llm = get_llm_instance(llm_provider)
 
         title = data.get('title', '').strip()
@@ -1126,6 +1192,7 @@ def ps_submission():
         if len(title) > 200:
             return jsonify({"error": "Title too long (max 200 characters)"}), 400
 
+        # Create PS ID and structure
         ps_id = hashlib.md5(title.encode()).hexdigest()[:8]
         problem_statement = f"Title: {title}\nDescription: {description}\nOutcomes: {outcomes}"
         ps_data = {
@@ -1136,18 +1203,18 @@ def ps_submission():
             "full_statement": problem_statement
         }
 
-        # Store in MongoDB
-        ps_collection.update_one(
-            {"id": ps_id},
-            {"$set": ps_data},
-            upsert=True
-        )
+        # Store main PS metadata
+        ps_collection.update_one({"id": ps_id}, {"$set": ps_data}, upsert=True)
 
-        # Process and cache using selected LLM
-        analysis, embedding = process_problem_statement(problem_statement, llm)
+        # Process using selected LLM (analysis stored per-LLM, embeddings stored in common ps_embeddings)
+        analysis, embedding = process_problem_statement(problem_statement, llm, llm_provider)
 
-        logger.info(f"Problem statement '{title}' (ID: {ps_id}) processed successfully (llm_provider={llm_provider})")
-        return jsonify({"message": f"PS '{title}' (ID: {ps_id}) processed and cached!", "ps_id": ps_id, "llm_provider": llm_provider}), 200
+        logger.info(f"✅ PS '{title}' processed successfully (llm_provider={llm_provider})")
+        return jsonify({
+            "message": f"Problem Statement '{title}' processed and cached!",
+            "ps_id": ps_id,
+            "llm_provider": llm_provider
+        }), 200
 
     except ValueError as ve:
         logger.warning(f"Validation error: {str(ve)}")
@@ -1156,29 +1223,34 @@ def ps_submission():
         logger.error(f"PS submission error: {str(e)}")
         logger.error(traceback.format_exc())
         return jsonify({"error": "Failed to process problem statement"}), 500
-
-
+    
 @app.route('/api/vendor_matching', methods=['POST'])
 def vendor_matching():
     """
-    Match vendors to problem statement with multi-criteria dynamic evaluation.
+    Match vendors to a problem statement with multi-criteria dynamic evaluation.
+    Uses provider-specific text analysis collections (OpenAI/Gemini/Ollama)
+    and shared embeddings collections (OpenAI-based).
     """
     try:
         data = request.json or {}
-        llm_provider = data.get("llm_provider", os.getenv("LLM_PROVIDER", "openai"))
+        llm_provider = data.get("llm_provider", os.getenv("LLM_PROVIDER", "openai")).lower()
         llm = get_llm_instance(llm_provider)
 
         ps_id = data.get("ps_id")
         top_k = int(data.get("top_k", 20))
         batch_size = int(data.get("batch_size", 5))
-        criteria = data.get("criteria", [])  # 🆕 from frontend
+        criteria = data.get("criteria", [])  # Optional evaluation criteria
 
-        # Validate inputs
         validate_matching_params(top_k, batch_size)
 
-        logger.info(f"Starting matching for PS ID: {ps_id}, llm={llm_provider}, criteria={len(criteria)}")
+        logger.info(f"🚀 Vendor matching started | PS ID: {ps_id} | LLM Provider: {llm_provider}")
 
-        # Fetch selected problem statement
+        # --- Get provider-specific collections ---
+        collections = get_llm_collections(llm_provider)
+        vendor_capabilities_collection = collections["vendor_capabilities"]
+        ps_analysis_collection = collections["ps_analysis"]
+
+        # --- Fetch problem statement ---
         selected_ps = ps_collection.find_one({"id": ps_id})
         if not selected_ps:
             return jsonify({"error": "Problem statement not found"}), 404
@@ -1188,10 +1260,24 @@ def vendor_matching():
         if not vendors:
             return jsonify({"error": "No vendors available"}), 400
 
-        # Process PS
-        ps_analysis, ps_embedding = process_problem_statement(problem_statement, llm)
+        # --- Load PS analysis ---
+        ps_hash = get_content_hash(problem_statement)
+        ps_analysis = load_cached_analysis(ps_analysis_collection, ps_hash)
 
-        # Process vendors
+        if not ps_analysis:
+            logger.info(f"🧩 PS analysis not found, processing with {llm_provider}")
+            ps_analysis, ps_embedding = process_problem_statement(problem_statement, llm, llm_provider)
+        else:
+            ps_embedding = load_embedding(ps_embeddings_collection, ps_hash)
+            if ps_embedding is None:
+                logger.info(f"🧠 Generating missing PS embedding (OpenAI)")
+                text_representation = create_text_representation(ps_analysis)
+                ps_embedding = get_embedding(text_representation)
+                save_embedding(ps_embeddings_collection, ps_hash, ps_embedding)
+            else:
+                logger.info(f"✅ Using cached PS analysis and embedding ({llm_provider})")
+
+        # --- Process all vendors ---
         vendor_capabilities = []
         vendor_embeddings = []
         vendors_processed = 0
@@ -1199,30 +1285,39 @@ def vendor_matching():
 
         for vendor in vendors:
             vendor_hash = get_content_hash(f"{vendor['name']}:{vendor['text']}")
+
             cap = load_cached_analysis(vendor_capabilities_collection, vendor_hash)
             emb = load_embedding(vendor_embeddings_collection, vendor_hash)
 
             if cap is None or emb is None:
-                logger.info(f"Processing vendor (not cached): {vendor['name']}")
-                cap, emb = process_vendor_profile(vendor["name"], vendor["text"], llm)
+                logger.info(f"⚙️ Processing vendor (not cached): {vendor['name']} [{llm_provider}]")
+                cap, emb = process_vendor_profile(vendor["name"], vendor["text"], llm, llm_provider)
                 vendors_processed += 1
             else:
                 vendors_from_cache += 1
-                logger.info(f"Using cached vendor: {vendor['name']}")
+                logger.info(f"✅ Cached vendor: {vendor['name']} [{llm_provider}]")
 
             vendor_capabilities.append(cap)
             vendor_embeddings.append(emb)
 
-        logger.info(f"Vendors from cache: {vendors_from_cache}, new: {vendors_processed}")
+        logger.info(f"Cache stats — from_cache={vendors_from_cache}, new={vendors_processed}")
 
-        # Shortlist vendors by similarity
+        # --- Shortlist vendors using embeddings ---
         shortlist = shortlist_vendors(ps_embedding, vendor_embeddings, vendor_capabilities, top_k=top_k)
-        logger.info(f"Shortlisted {len(shortlist)} vendors")
+        logger.info(f"🏆 Shortlisted {len(shortlist)} vendors")
 
-        # Evaluate shortlist dynamically
-        final_results = evaluate_shortlist(ps_analysis, shortlist, llm, batch_size=batch_size, criteria=criteria)
-        logger.info(f"✅ Evaluation complete: {len(final_results)} vendors evaluated")
+        # --- Evaluate shortlisted vendors ---
+        final_results = evaluate_shortlist(
+        ps_id=ps_id,
+        shortlist=shortlist,
+        llm=llm,
+        llm_provider=llm_provider,
+        batch_size=batch_size,
+        criteria=criteria
+        )
+        logger.info(f"✅ Evaluation complete for {llm_provider}: {len(final_results)} vendors evaluated")
 
+        # --- Build response ---
         selected_ps_serializable = json.loads(json_util.dumps(selected_ps))
 
         response = {
@@ -1244,10 +1339,10 @@ def vendor_matching():
         logger.warning(f"Validation error: {str(ve)}")
         return jsonify({"error": str(ve)}), 400
     except Exception as e:
-        logger.error(f"Matching error: {str(e)}")
+        logger.error(f"❌ Matching error: {str(e)}")
         logger.error(traceback.format_exc())
-        return jsonify({"error": "An internal error occurred during matching"}), 500
-
+        return jsonify({"error": "An internal error occurred during vendor matching"}), 500
+        
 @app.route('/api/download_results/<ps_id>', methods=['GET'])
 def download_results(ps_id):
     """

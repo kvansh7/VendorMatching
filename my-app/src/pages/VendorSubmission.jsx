@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { useLLM } from '../context/LLMProviderContext'; // ✅ Import context
 
 const VendorSubmission = () => {
   const [vendorName, setVendorName] = useState('');
@@ -7,6 +8,8 @@ const VendorSubmission = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+
+  const { provider } = useLLM(); // ✅ Get current LLM provider from context
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -23,12 +26,13 @@ const VendorSubmission = () => {
     const formData = new FormData();
     formData.append('vendor_name', vendorName);
     formData.append('file', file);
+    formData.append('llm_provider', provider); // ✅ include LLM provider
 
     try {
       const res = await axios.post('/api/vendor_submission', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      setMessage(res.data.message);
+      setMessage(res.data.message + ` (Provider: ${res.data.llm_provider})`);
       setVendorName('');
       setFile(null);
     } catch (err) {
@@ -102,7 +106,7 @@ const VendorSubmission = () => {
           }`}
           disabled={loading}
         >
-          {loading ? 'Processing...' : 'Submit Vendor'}
+          {loading ? 'Processing...' : `Submit to ${provider.toUpperCase()}`}
         </button>
 
         {/* Status Message */}

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Link, Outlet, useLocation } from 'react-router-dom';
-import axios from 'axios';
+import React, { useState } from "react";
+import { Link, Outlet, useLocation } from "react-router-dom";
+import axios from "axios";
+import { useLLM } from "../context/LLMProviderContext"; // ✅ Import context hook
 
-axios.defaults.baseURL = 'http://127.0.0.1:5000';
+axios.defaults.baseURL = "http://127.0.0.1:5000";
 
 const menuItems = [
   { name: "Dashboard", path: "/dashboard", icon: (
@@ -31,15 +32,16 @@ function MainLayout() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const { provider, setProvider } = useLLM(); // ✅ Use context hook
 
   const clearCache = async () => {
     setIsClearing(true);
     try {
-      await axios.post('/api/clear_cache');
-      alert('Cache cleared successfully');
+      await axios.post("/api/clear_cache");
+      alert("Cache cleared successfully");
     } catch (error) {
-      console.error('Error clearing cache:', error);
-      alert('Failed to clear cache');
+      console.error("Error clearing cache:", error);
+      alert("Failed to clear cache");
     } finally {
       setIsClearing(false);
     }
@@ -50,24 +52,42 @@ function MainLayout() {
       {/* Navbar */}
       <nav className="sticky top-0 z-50 backdrop-blur-xl bg-black/40 border-b border-white/10">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            {/* Logo */}
-            <Link to="/" className="flex items-center gap-3 group">
-              <div className="w-10 h-10 bg-white/90 rounded-lg flex items-center justify-center font-bold text-black transition-transform duration-300 group-hover:scale-105 shadow-lg">
-                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5zm0 18c-3.86-.96-7-4.96-7-9V8.33l7-3.89 7 3.89V11c0 4.04-3.14 8.04-7 9z"/>
-                  <path d="M9 12l2 2 4-4"/>
-                </svg>
-              </div>
-              <div>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            
+            {/* Logo and Menu */}
+            <div className="flex items-center justify-between w-full lg:w-auto">
+              {/* Logo */}
+              <Link to="/" className="flex items-center gap-3 group">
+                <div className="w-10 h-10 bg-white/90 rounded-lg flex items-center justify-center font-bold text-black transition-transform duration-300 group-hover:scale-105 shadow-lg">
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5zm0 18c-3.86-.96-7-4.96-7-9V8.33l7-3.89 7 3.89V11c0 4.04-3.14 8.04-7 9z"/>
+                    <path d="M9 12l2 2 4-4"/>
+                  </svg>
+                </div>
                 <h1 className="text-xl font-semibold text-white tracking-tight">
                   Vendor Management
                 </h1>
-              </div>
-            </Link>
+              </Link>
+
+              {/* Mobile Menu Button */}
+              <button
+                onClick={() => setMenuOpen(!menuOpen)}
+                className="lg:hidden w-10 h-10 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors duration-200"
+              >
+                {menuOpen ? (
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                ) : (
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                )}
+              </button>
+            </div>
 
             {/* Desktop Menu */}
-            <div className="hidden lg:flex items-center gap-2">
+            <div className="hidden lg:flex items-center gap-3">
               {menuItems.map((item) => {
                 const isActive = location.pathname === item.path;
                 return (
@@ -85,13 +105,29 @@ function MainLayout() {
                   </Link>
                 );
               })}
-              
+
+              {/* Divider */}
               <div className="ml-2 w-px h-8 bg-white/10"></div>
-              
+
+              {/* LLM Provider Dropdown ✅ */}
+              <div className="flex items-center justify-center gap-2 ml-3">
+                <label className="text-white/80 text-sm">LLM Provider:</label>
+                <select
+                  value={provider}
+                  onChange={(e) => setProvider(e.target.value)}
+                  className="bg-gray-800 text-white text-sm px-3 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  <option value="openai">OpenAI</option>
+                  <option value="gemini">Gemini</option>
+                  <option value="ollama">Ollama</option>
+                </select>
+              </div>
+
+              {/* Clear Cache Button */}
               <button
                 onClick={clearCache}
                 disabled={isClearing}
-                className="ml-2 flex items-center gap-2 px-4 py-2.5 border border-white/20 hover:border-white/40 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="ml-3 flex items-center gap-2 px-4 py-2.5 border border-white/20 hover:border-white/40 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg font-medium transition-all duration-200 disabled:opacity-50"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -100,88 +136,82 @@ function MainLayout() {
               </button>
             </div>
 
-            {/* Mobile Menu Button */}
-            <button
-              onClick={() => setMenuOpen(!menuOpen)}
-              className="lg:hidden w-10 h-10 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors duration-200"
-            >
-              {menuOpen ? (
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              ) : (
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              )}
-            </button>
-          </div>
+            {/* Mobile Menu */}
+            {menuOpen && (
+              <div className="lg:hidden mt-4 pb-4 space-y-2 border-t border-white/10 pt-4">
+                {menuItems.map((item) => {
+                  const isActive = location.pathname === item.path;
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setMenuOpen(false)}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
+                        isActive
+                          ? "bg-white text-black shadow-lg"
+                          : "text-gray-300 hover:text-white hover:bg-white/10"
+                      }`}
+                    >
+                      {item.icon}
+                      <span className="text-sm">{item.name}</span>
+                    </Link>
+                  );
+                })}
 
-          {/* Mobile Menu */}
-          {menuOpen && (
-            <div className="lg:hidden mt-4 pb-4 space-y-2 border-t border-white/10 pt-4">
-              {menuItems.map((item) => {
-                const isActive = location.pathname === item.path;
-                return (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    onClick={() => setMenuOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
-                      isActive
-                        ? "bg-white text-black shadow-lg"
-                        : "text-gray-300 hover:text-white hover:bg-white/10"
-                    }`}
+                {/* Mobile LLM Provider Dropdown ✅ */}
+                <div className="px-4 pt-3 border-t border-white/10">
+                  <label className="text-white/80 text-sm mr-2">LLM Provider:</label>
+                  <select
+                    value={provider}
+                    onChange={(e) => setProvider(e.target.value)}
+                    className="bg-gray-800 text-white px-3 py-2 rounded-lg border border-gray-600 w-full mt-2"
                   >
-                    {item.icon}
-                    <span className="text-sm">{item.name}</span>
-                  </Link>
-                );
-              })}
-              
-              <button
-                onClick={() => {
-                  clearCache();
-                  setMenuOpen(false);
-                }}
-                disabled={isClearing}
-                className="w-full flex items-center gap-3 px-4 py-3 border border-white/20 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg font-medium mt-2 disabled:opacity-50"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                <span className="text-sm">{isClearing ? "Clearing..." : "Clear Cache"}</span>
-              </button>
-            </div>
-          )}
+                    <option value="openai">OpenAI</option>
+                    <option value="gemini">Gemini</option>
+                    <option value="ollama">Ollama</option>
+                  </select>
+                </div>
+
+                {/* Mobile Clear Cache */}
+                <button
+                  onClick={() => {
+                    clearCache();
+                    setMenuOpen(false);
+                  }}
+                  disabled={isClearing}
+                  className="w-full flex items-center gap-3 px-4 py-3 border border-white/20 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg font-medium mt-2 disabled:opacity-50"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  <span className="text-sm">{isClearing ? "Clearing..." : "Clear Cache"}</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </nav>
 
-      {/* Page Content */}
+      {/* Main Content */}
       <main className="relative z-10 max-w-7xl mx-auto px-6 py-10">
         <Outlet />
       </main>
 
       {/* Footer */}
       <footer className="relative z-10 backdrop-blur-xl bg-black/40 border-t border-white/10 mt-20">
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-white/90 rounded-lg flex items-center justify-center shadow-lg">
-                <svg className="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5zm0 18c-3.86-.96-7-4.96-7-9V8.33l7-3.89 7 3.89V11c0 4.04-3.14 8.04-7 9z"/>
-                  <path d="M9 12l2 2 4-4"/>
-                </svg>
-              </div>
-              <div>
-                <p className="font-semibold text-white text-sm">Vendor Management Platform</p>
-              </div>
+        <div className="max-w-7xl mx-auto px-6 py-8 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-white/90 rounded-lg flex items-center justify-center shadow-lg">
+              <svg className="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5zm0 18c-3.86-.96-7-4.96-7-9V8.33l7-3.89 7 3.89V11c0 4.04-3.14 8.04-7 9z"/>
+                <path d="M9 12l2 2 4-4"/>
+              </svg>
             </div>
-            
-            <div className="text-center md:text-right">
-              <p className="text-gray-400 text-sm">All rights reserved</p>
-            </div>
+            <p className="font-semibold text-white text-sm">
+              Vendor Management Platform
+            </p>
           </div>
+          <p className="text-gray-400 text-sm">All rights reserved</p>
         </div>
       </footer>
     </div>

@@ -11,7 +11,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 from typing import TypedDict, List, Dict, Any, Tuple
 # LangChain & Models
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -255,15 +255,28 @@ def create_text_representation(data: Dict[str, Any]) -> str:
 
 def get_llm_collections(provider: str):
     """
-    Dynamically select MongoDB collections based on the LLM provider.
+    Get provider-specific MongoDB collections.
+    Matches your actual collection names in the database.
     """
     db = client["vendor_matching_db"]
-
+    
+    # Normalize provider name
+    provider = provider.lower().strip()
+    
+    # Validate provider
+    if provider not in ['openai', 'gemini', 'ollama']:
+        logger.warning(f"Invalid provider '{provider}', defaulting to 'gemini'")
+        provider = 'gemini'
+    
     collections = {
         "vendor_capabilities": db[f"vendor_capabilities_{provider}"],
         "ps_analysis": db[f"ps_analysis_{provider}"]
     }
+    
+    logger.info(f"Using collections: vendor_capabilities_{provider}, ps_analysis_{provider}")
     return collections
+
+
 # ============================================================================
 # CORE PROCESSING FUNCTIONS (UPDATED)
 # ============================================================================
@@ -632,12 +645,8 @@ def search_vendors_with_openai(
 ) -> Dict[str, Any]:
     """
     Use OpenAI Responses API with web_search_preview to find real, active vendors.
-
-    Improvements:
-    - Safely flattens `required_tools_or_frameworks` when it's a dict/list/string.
-    - Defensive parsing of `response.output` from OpenAI (handles different object shapes).
-    - Aggregates URL citations and attaches them to parsed vendors.
-    - Returns partial results if web search tool wasn't invoked but text output exists.
+    
+    FIXED: Changed ps_analysis_openai to ps_analysis (parameter name)
     """
     try:
         if not openai_client:
@@ -649,21 +658,19 @@ def search_vendors_with_openai(
         requirements_raw = ps_analysis.get('key_technical_requirements', [])
 
         # Normalize domains -> list[str]
+        domains = []
         if isinstance(domains_raw, str):
             domains = [domains_raw]
         elif isinstance(domains_raw, list):
             domains = domains_raw
-        else:
-            # If it's a dict or other structure, try to flatten values
-            domains = []
-            if isinstance(domains_raw, dict):
-                for v in domains_raw.values():
-                    if isinstance(v, list):
-                        domains.extend(v)
-                    elif isinstance(v, str):
-                        domains.append(v)
+        elif isinstance(domains_raw, dict):
+            for v in domains_raw.values():
+                if isinstance(v, list):
+                    domains.extend(v)
+                elif isinstance(v, str):
+                    domains.append(v)
 
-        # Normalize tools -> list[str] (flatten dicts)
+        # Normalize tools -> list[str]
         tools = []
         if isinstance(tools_raw, str):
             tools = [tools_raw]
@@ -675,47 +682,46 @@ def search_vendors_with_openai(
                     tools.extend(v)
                 elif isinstance(v, str):
                     tools.append(v)
-        # else: leave tools empty
 
         # Normalize requirements -> list[str]
+        requirements = []
         if isinstance(requirements_raw, str):
             requirements = [requirements_raw]
         elif isinstance(requirements_raw, list):
             requirements = requirements_raw
-        else:
-            requirements = []
-            if isinstance(requirements_raw, dict):
-                for v in requirements_raw.values():
-                    if isinstance(v, list):
-                        requirements.extend(v)
-                    elif isinstance(v, str):
-                        requirements.append(v)
+        elif isinstance(requirements_raw, dict):
+            for v in requirements_raw.values():
+                if isinstance(v, list):
+                    requirements.extend(v)
+                elif isinstance(v, str):
+                    requirements.append(v)
 
-        # Truncate/clean values for prompt readability
+        # Create preview strings
         domains_preview = ', '.join(domains[:5]) if domains else 'software development'
         tools_preview = ', '.join(tools[:6]) if tools else 'modern stack'
         reqs_preview = ', '.join(requirements[:6]) if requirements else 'enterprise-grade'
 
-        # --- Build search queries safely ---
+        # --- Build search queries ---
         search_queries = []
         if domains:
             for d in domains[:2]:
                 search_queries.append(f"top companies specializing in {d}")
         if tools:
-            # safe slice now that `tools` is a list
             tools_str = ', '.join(tools[:3])
             search_queries.append(f"companies using {tools_str}")
+        
+        # Fallback query
         if not search_queries:
             desc = ""
-            for l in problem_statement.splitlines():
-                if l.strip().lower().startswith("description:"):
-                    desc = l.split(":", 1)[1].strip()
+            for line in problem_statement.splitlines():
+                if line.strip().lower().startswith("description:"):
+                    desc = line.split(":", 1)[1].strip()
                     break
             search_queries.append(f"technology vendors for {desc[:120] or 'software development'}")
 
         logger.info(f"Generated search queries: {search_queries}")
 
-        # --- Build comprehensive prompt ---
+        # --- Build search prompt ---
         search_prompt = f"""You are a procurement researcher. Use web search to find exactly {count} real, active technology vendors.
 
 SEARCH CRITERIA:
@@ -729,7 +735,7 @@ USE THESE SEARCH QUERIES:
 INSTRUCTIONS:
 1. Perform web search NOW using the tool.
 2. Find {count} real companies with active websites.
-3. For each:
+3. For each company provide:
    - Company name
    - 2-3 sentence description
    - Technologies used
@@ -737,7 +743,7 @@ INSTRUCTIONS:
 
 DO NOT hallucinate. Only use search results.
 
-Return numbered list:
+Return numbered list format:
 1. **Company Name**
    Description...
    Technologies: ...
@@ -753,38 +759,31 @@ Return numbered list:
             tool_choice="auto"
         )
 
-        # --- Defensive parsing of the response object ---
+        # --- Parse response ---
         search_results = ""
         citations = []
         web_search_used = False
 
-        # response.output may be a list-like or dict-like depending on client
         output_items = []
         if isinstance(response, dict):
             output_items = response.get("output", []) or []
         else:
-            # try attribute
             output_items = getattr(response, "output", []) or []
 
-        # Normalize to list of items (some SDKs wrap things differently)
         if not isinstance(output_items, list):
             output_items = [output_items]
 
         for item in output_items:
-            # item could be a dict or an object with attributes
             item_type = None
             if isinstance(item, dict):
                 item_type = item.get("type") or item.get("role")
             else:
                 item_type = getattr(item, "type", None) or getattr(item, "role", None)
 
-            # detect web_search_call invocation
             if item_type and "web_search" in str(item_type).lower():
                 web_search_used = True
                 logger.info("Web search tool was called")
 
-            # extract textual content and url annotations robustly
-            # Many SDKs represent contents as item['content'] being a list of dicts/objs
             contents = []
             if isinstance(item, dict):
                 contents = item.get("content") or []
@@ -795,39 +794,33 @@ Return numbered list:
                 contents = [contents]
 
             for c in contents:
-                # c may be dict or object; try to obtain text
                 text_piece = ""
                 if isinstance(c, dict):
-                    # common key names
                     text_piece = c.get("text") or c.get("output_text") or c.get("content") or ""
-                    # annotations/citations
                     annots = c.get("annotations") or c.get("metadata") or []
                     if isinstance(annots, list):
                         for ann in annots:
                             if isinstance(ann, dict) and ann.get("type") == "url_citation":
-                                citations.append({"title": ann.get("title", "Source"), "url": ann.get("url")})
+                                citations.append({
+                                    "title": ann.get("title", "Source"),
+                                    "url": ann.get("url")
+                                })
                 else:
-                    # object-like annotation
                     text_piece = getattr(c, "text", "") or getattr(c, "output_text", "") or ""
                     annots = getattr(c, "annotations", []) or []
                     for ann in annots:
                         if getattr(ann, "type", "") == "url_citation":
-                            citations.append({"title": getattr(ann, "title", "Source"), "url": getattr(ann, "url", "")})
+                            citations.append({
+                                "title": getattr(ann, "title", "Source"),
+                                "url": getattr(ann, "url", "")
+                            })
 
                 if text_piece:
                     search_results += text_piece + "\n"
 
-            # fallback: if item is string-like, append
             if isinstance(item, str):
                 search_results += item + "\n"
-            elif not contents:
-                # try to stringify item
-                try:
-                    search_results += str(item) + "\n"
-                except Exception:
-                    pass
 
-        # Final fallback: if no explicit web_search call detected but some text exists, proceed with warning
         if not web_search_used and not search_results.strip():
             logger.warning("Web search tool was not used and no textual output found.")
             return {
@@ -839,14 +832,14 @@ Return numbered list:
             }
 
         if not web_search_used:
-            logger.warning("Web search tool was not explicitly detected in the response; proceeding to parse any textual output.")
+            logger.warning("Web search tool not explicitly detected; parsing available text output.")
 
-        logger.info(f"Search results length: {len(search_results)} chars; citations found: {len(citations)}")
+        logger.info(f"Search results: {len(search_results)} chars; citations: {len(citations)}")
 
-        # --- Parse vendor candidates from the aggregated search_results text ---
+        # --- Parse vendors ---
         vendors = parse_vendor_search_results(search_results)
 
-        # Attach aggregated citations (dedup by URL)
+        # Attach citations
         seen_urls = set()
         merged_citations = []
         for c in citations:
@@ -857,7 +850,6 @@ Return numbered list:
 
         for v in vendors:
             existing = v.get("web_sources", []) or []
-            # append merged_citations but avoid duplicates
             for c in merged_citations:
                 if c["url"] not in [s.get("url") for s in existing]:
                     existing.append(c)
@@ -882,13 +874,13 @@ Return numbered list:
         }
 
 def parse_vendor_search_results(search_text: str) -> List[Dict[str, Any]]:
-    """
-    Parse OpenAI web search results into structured vendor data.
-    """
+    """Parse OpenAI web search results into structured vendor data."""
     if not search_text or len(search_text.strip()) < 50:
         return []
 
     vendors = []
+    
+    # Try multiple splitting strategies
     sections = re.split(r'\n(?=\d+\.\s+\*\*)', search_text.strip())
     if len(sections) <= 1:
         sections = re.split(r'\n(?=\d+\.)', search_text.strip())
@@ -907,20 +899,21 @@ def parse_vendor_search_results(search_text: str) -> List[Dict[str, Any]]:
             "web_sources": []
         }
 
-        # Extract name
+        # Extract name (look for bold text or numbered item)
         name_match = re.search(r'\*\*([^*]+)\*\*', sec)
         if not name_match:
             name_match = re.search(r'^\d+\.\s+([A-Z][A-Za-z0-9&\s\.,\-]{3,})', sec)
         if name_match:
             vendor["name"] = name_match.group(1).strip()
-            vendor["name"] = re.sub(r'^\ 1\.', '', vendor["name"])
+            vendor["name"] = re.sub(r'^\d+\.', '', vendor["name"]).strip()
 
         # Extract description
         lines = [l.strip() for l in sec.splitlines() if l.strip()]
         desc_lines = []
         for line in lines:
-            if not line.startswith(('http', 'Technologies:', 'Website:')):
+            if not line.startswith(('http', 'Technologies:', 'Website:', 'Tech Stack:')):
                 line = re.sub(r'\*\*.*?\*\*', '', line)
+                line = re.sub(r'^\d+\.\s*', '', line)
                 if len(line) > 20:
                     desc_lines.append(line)
             if len(desc_lines) >= 3:
@@ -937,28 +930,14 @@ def parse_vendor_search_results(search_text: str) -> List[Dict[str, Any]]:
 
     return vendors[:10]
 
+
 def normalize_param_name(name: str) -> str:
-    """Normalize parameter name to a valid Python identifier"""
-    import re
-    # Convert to lowercase and replace special characters with underscore
+    """Normalize parameter name to a valid Python identifier."""
     normalized = name.lower()
     normalized = re.sub(r'[^a-z0-9]+', '_', normalized)
-    # Remove leading/trailing underscores
     normalized = normalized.strip('_')
     return normalized
 
-
-def calculate_composite_score(scores: Dict[str, float], evaluation_params: List[Dict[str, Any]]) -> float:
-    """Calculate weighted composite score from individual criteria scores using dynamic parameters"""
-    composite = 0.0
-    for param in evaluation_params:
-        param_key = normalize_param_name(param['name'])
-        score_key = f"{param_key}_score"
-        score = scores.get(score_key, 0)
-        weight = param['weight'] / 100.0  # Convert percentage to decimal
-        composite += score * weight
-    
-    return round(composite, 2)
 
 def evaluate_web_vendors(
     ps_analysis: Dict[str, Any],
@@ -966,9 +945,7 @@ def evaluate_web_vendors(
     evaluation_params: List[Dict[str, Any]],
     llm_provider: str = "openai"
 ) -> List[Dict[str, Any]]:
-    """
-    Evaluate web-found vendors using LLM with dynamic criteria.
-    """
+    """Evaluate web-found vendors using LLM with dynamic criteria."""
     if not web_vendors:
         return []
 
@@ -977,33 +954,44 @@ def evaluate_web_vendors(
     weights = {}
     for p in evaluation_params:
         key = normalize_param_name(p["name"])
-        criteria.append({"key": key, "label": p["name"], "weight": p["weight"] / 100.0})
+        criteria.append({
+            "key": key,
+            "label": p["name"],
+            "weight": p["weight"] / 100.0
+        })
         weights[key] = p["weight"] / 100.0
 
-    criteria_lines = "\n".join([f"{i+1}. {c['label']} (0-100)" for i, c in enumerate(criteria)])
-    score_fields = ",\n    ".join([f'"{c["key"]}": 0-100' for c in criteria])
+    criteria_lines = "\n".join([
+        f"{i+1}. {c['label']} (0-100)"
+        for i, c in enumerate(criteria)
+    ])
+    score_fields = ",\n    ".join([
+        f'"{c["key"]}": <0-100 score>'
+        for c in criteria
+    ])
 
     prompt_template = PromptTemplate.from_template("""
-You are a senior technical procurement expert.
+You are a senior technical procurement expert with 15+ years of experience.
 
-Problem Requirements:
+PROBLEM REQUIREMENTS:
 {ps_analysis}
 
-Vendor from Web:
+VENDOR FROM WEB SEARCH:
 {vendor_info}
 
-Criteria:
+EVALUATION CRITERIA:
 {criteria_lines}
 
-Return JSON:
+Provide JSON response ONLY:
 {{
-  "name": "<name>",
+  "name": "<vendor name>",
   {score_fields},
-  "justification": "<3-5 sentences with evidence>",
-  "strengths": ["...", "..."],
-  "concerns": ["...", "..."]
+  "justification": "<3-5 sentences with specific evidence from vendor description>",
+  "strengths": ["<specific strength 1>", "<specific strength 2>", "<specific strength 3>"],
+  "concerns": ["<specific concern 1>", "<specific concern 2>"]
 }}
-Only JSON.
+
+Only return valid JSON. No markdown, no explanation.
 """)
 
     llm = get_llm_instance(llm_provider)
@@ -1012,7 +1000,12 @@ Only JSON.
 
     for vendor in web_vendors:
         try:
-            vendor_info = f"Name: {vendor['name']}\nDescription: {vendor['description']}\nFull: {vendor.get('full_text', '')}"
+            vendor_info = (
+                f"Name: {vendor['name']}\n"
+                f"Description: {vendor['description']}\n"
+                f"Full Context: {vendor.get('full_text', '')}"
+            )
+            
             prompt = prompt_template.format(
                 ps_analysis=json.dumps(ps_analysis, indent=2),
                 vendor_info=vendor_info,
@@ -1022,6 +1015,13 @@ Only JSON.
 
             raw = llm.invoke(prompt)
             raw_text = raw.content if hasattr(raw, 'content') else str(raw)
+            
+            # Clean potential markdown formatting
+            raw_text = raw_text.strip()
+            if raw_text.startswith('```'):
+                raw_text = re.sub(r'^```(?:json)?\s*', '', raw_text)
+                raw_text = re.sub(r'\s*```$', '', raw_text)
+            
             parsed = parser.parse(raw_text)
 
             scores = {}
@@ -1041,25 +1041,30 @@ Only JSON.
                 "name": parsed.get("name", vendor["name"]),
                 "description": vendor.get("description", ""),
                 "composite_score": composite,
-                "justification": parsed.get("justification", ""),
-                "strengths": parsed.get("strengths", []),
-                "concerns": parsed.get("concerns", []),
+                "justification": parsed.get("justification", "").strip(),
+                "strengths": [s.strip() for s in parsed.get("strengths", []) if s.strip()],
+                "concerns": [c.strip() for c in parsed.get("concerns", []) if c.strip()],
                 "web_sources": vendor.get("web_sources", []),
                 "source": "web_search"
             }
+            
             for c in criteria:
                 result[f"{c['key']}_score"] = scores[c["key"]]
 
             results.append(result)
+            logger.info(f"✅ Evaluated web vendor: {result['name']} (score: {composite})")
 
         except Exception as e:
             logger.error(f"Eval failed for {vendor.get('name')}: {e}")
+            logger.error(traceback.format_exc())
+            
             fallback = {
                 "name": vendor.get("name", "Unknown"),
+                "description": vendor.get("description", ""),
                 "composite_score": 0,
-                "justification": "Evaluation failed",
+                "justification": f"Evaluation failed: {str(e)[:100]}",
                 "strengths": [],
-                "concerns": ["LLM error"],
+                "concerns": ["LLM evaluation error", "Unable to score vendor"],
                 "web_sources": vendor.get("web_sources", []),
                 "source": "web_search_fallback"
             }
@@ -1069,6 +1074,7 @@ Only JSON.
 
     results.sort(key=lambda x: x["composite_score"], reverse=True)
     return results
+
 # ============================================================================
 # API ENDPOINTS (UPDATED to accept llm_provider per-request)
 # ============================================================================
@@ -1531,9 +1537,9 @@ def delete_vendor(vendor_name):
 @app.route('/api/web_search_vendors', methods=['POST', 'OPTIONS'])
 def web_search_vendors():
     """
-    Search web for vendors matching the problem statement
+    Search web for vendors matching the problem statement.
+    Uses collections: ps_analysis_[provider], problem_statements, etc.
     """
-    # Handle OPTIONS request for CORS
     if request.method == 'OPTIONS':
         return '', 200
     
@@ -1541,6 +1547,7 @@ def web_search_vendors():
         data = request.json
         ps_id = data.get('ps_id')
         count = int(data.get('count', 5))
+        llm_provider = data.get('llm_provider', 'gemini').lower()  # Default to gemini
         evaluation_params = data.get('evaluation_params', [
             {'name': 'Domain Fit', 'weight': 40},
             {'name': 'Tools Fit', 'weight': 30},
@@ -1554,39 +1561,58 @@ def web_search_vendors():
         
         validate_evaluation_params(evaluation_params)
         
-        logger.info(f"Web search request for PS ID: {ps_id}, count: {count}")
+        logger.info(f"Web search request: PS={ps_id}, count={count}, provider={llm_provider}")
         
-        # Fetch problem statement
+        # Fetch problem statement from 'problem_statements' collection
         selected_ps = ps_collection.find_one({"id": ps_id})
         if not selected_ps:
             return jsonify({"error": "Problem statement not found"}), 404
         
         problem_statement = selected_ps["full_statement"]
-        
-        # Get PS analysis - Force regeneration if cache is empty or invalid
         ps_hash = get_content_hash(problem_statement)
+        
+        # Get provider-specific collections (e.g., ps_analysis_gemini)
+        collections = get_llm_collections(llm_provider)
+        ps_analysis_collection = collections["ps_analysis"]
+        
+        # Load or generate PS analysis for this provider
         ps_analysis = load_cached_analysis(ps_analysis_collection, ps_hash)
         
-        # Check if analysis is valid (has required fields)
         if not ps_analysis or not any([
             ps_analysis.get('primary_technical_domains'),
             ps_analysis.get('required_tools_or_frameworks'),
             ps_analysis.get('key_technical_requirements')
         ]):
-            logger.info("PS analysis is missing or invalid, regenerating...")
-            # Force regenerate analysis
-            ps_analysis, ps_embedding = process_problem_statement(problem_statement, 'gemini')
-            logger.info(f"Regenerated PS analysis: {ps_analysis}")
+            logger.info(f"PS analysis missing/invalid for {llm_provider}, regenerating...")
+            
+            # Get LLM instance and generate analysis
+            llm = get_llm_instance(llm_provider)
+            ps_analysis, ps_embedding = process_problem_statement(
+                problem_statement,
+                llm,
+                llm_provider
+            )
+            logger.info(f"✅ Generated PS analysis with {llm_provider}")
         else:
-            logger.info(f"Using cached PS analysis: {ps_analysis}")
+            logger.info(f"✅ Using cached PS analysis from ps_analysis_{llm_provider}")
         
-        # Search web for vendors
-        search_results = search_vendors_with_openai(problem_statement, ps_analysis, count)
+        # Log analysis fields
+        logger.info(f"PS Analysis - domains: {bool(ps_analysis.get('primary_technical_domains'))}, "
+                   f"tools: {bool(ps_analysis.get('required_tools_or_frameworks'))}, "
+                   f"reqs: {bool(ps_analysis.get('key_technical_requirements'))}")
+        
+        # Search web for vendors (always uses OpenAI)
+        search_results = search_vendors_with_openai(
+            problem_statement,
+            ps_analysis,
+            count
+        )
         
         if not search_results["search_successful"]:
             return jsonify({
                 "error": "Web search failed",
-                "details": search_results.get("error", "Unknown error")
+                "details": search_results.get("error", "Unknown error"),
+                "search_results_raw": search_results.get("search_results_raw", "")
             }), 500
         
         web_vendors = search_results["vendors"]
@@ -1596,16 +1622,25 @@ def web_search_vendors():
                 "message": "No vendors found in web search",
                 "total_found": 0,
                 "vendors": [],
-                "sources_count": 0,
-                "top_score": 0
+                "sources_count": search_results["sources_count"],
+                "top_score": 0,
+                "search_results_preview": search_results.get("search_results_raw", "")[:500]
             }), 200
         
-        # Evaluate the web vendors
-        evaluated_vendors = evaluate_web_vendors(ps_analysis, web_vendors, evaluation_params)
+        logger.info(f"Found {len(web_vendors)} vendors from web search")
+        
+        # Evaluate vendors using selected LLM provider
+        evaluated_vendors = evaluate_web_vendors(
+            ps_analysis,
+            web_vendors,
+            evaluation_params,
+            llm_provider
+        )
         
         # Prepare response
         response = {
             "problem_statement_id": ps_id,
+            "llm_provider": llm_provider,
             "total_found": len(evaluated_vendors),
             "sources_count": search_results["sources_count"],
             "top_score": evaluated_vendors[0]["composite_score"] if evaluated_vendors else 0,
@@ -1613,7 +1648,7 @@ def web_search_vendors():
             "evaluation_params": evaluation_params
         }
         
-        logger.info(f"Web search complete: found {len(evaluated_vendors)} vendors")
+        logger.info(f"✅ Web search complete: {len(evaluated_vendors)} vendors evaluated")
         return jsonify(response), 200
         
     except ValueError as ve:
@@ -1622,8 +1657,10 @@ def web_search_vendors():
     except Exception as e:
         logger.error(f"Web search vendors error: {str(e)}")
         logger.error(traceback.format_exc())
-        return jsonify({"error": "An internal error occurred during web search"}), 500
-
+        return jsonify({
+            "error": "An internal error occurred during web search",
+            "details": str(e)
+        }), 500
 
 
 

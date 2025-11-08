@@ -146,7 +146,7 @@ const VendorMatching = () => {
       {/* Header */}
       <h1 className="text-4xl font-bold text-white text-center">Vendor Matching</h1>
 
-      {/* LLM Provider */}
+      {/* LLM Provider
       <div className="flex justify-center">
         <label className="text-white/80 mr-3 self-center text-lg">LLM Provider:</label>
         <select
@@ -158,7 +158,7 @@ const VendorMatching = () => {
           <option value="gemini">Gemini</option>
           <option value="ollama">Ollama</option>
         </select>
-      </div>
+      </div> */}
 
       {/* No PS warning */}
       {psOptions.length === 0 ? (

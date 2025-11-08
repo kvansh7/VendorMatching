@@ -9,6 +9,7 @@ import Vendors from "./pages/Vendors";
 import { LLMProvider } from "./context/LLMProviderContext"; // 👈 add this import
 import VendorSearch from "./pages/VendorSearch";
 import TestLLM from "./pages/TestLLM";
+import UnifiedVendorPage from "./pages/UnifiedVendorPage";
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
           <Route path="/vendor-submission" element={<VendorSubmission />} />
           <Route path="/vendor-matching" element={<VendorMatching />} />
           <Route path="/vendors" element={<Vendors />} />
+          <Route path="/unified" element={<UnifiedVendorPage />} />
           <Route path="/vendorsearch" element={<VendorSearch/>}/>
           <Route path="/test" element={<TestLLM/>}/>
         </Route>

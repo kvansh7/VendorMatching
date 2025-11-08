@@ -40,16 +40,16 @@ function Home() {
             path: "/vendors"
           },
           {
-            icon: "📄",
-            title: "View PS",
-            description: "Check all project submissions quickly",
-            path: "/view-ps"
+            icon: "🌐",
+            title: "Websearch Vendors",
+            description: "Search vendors on web",
+            path: "/vendorsearch"
           },
           {
             icon: "➕",
-            title: "Add PS",
+            title: "PS Submission",
             description: "Submit new project submissions effortlessly",
-            path: "/add-ps"
+            path: "/ps-submission"
           }
         ].map((feature, i) => (
           <Link

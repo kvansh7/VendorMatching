@@ -1405,18 +1405,167 @@ def download_results(ps_id):
 
 @app.route('/api/problem_statements', methods=['GET'])
 def get_problem_statements():
-    """Get all problem statements"""
+    """Get all problem statements with provider-specific analysis info"""
     try:
+        llm_provider = request.args.get('llm_provider', 'openai').lower()
+        
+        # Validate provider
+        if llm_provider not in ['openai', 'gemini']:
+            llm_provider = 'openai'
+        
+        # Get all problem statements
         ps_list = list(ps_collection.find())
-        ps_options = [
-            json.loads(json_util.dumps({"id": ps["id"], "title": ps["title"]}))
-            for ps in ps_list
-        ]
-        return jsonify(ps_options), 200
+        
+        # Get provider-specific analysis collection
+        analysis_collection_name = f'ps_analysis_{llm_provider}'
+        analysis_collection = db[analysis_collection_name]
+        
+        enriched_ps = []
+        for ps in ps_list:
+            ps_hash = get_content_hash(ps['full_statement'])
+            
+            # Check if analysis exists for this provider
+            analysis_doc = analysis_collection.find_one({"content_hash": ps_hash})
+            has_analysis = analysis_doc is not None
+            
+            # Get basic analysis data (just to show preview)
+            analysis_preview = None
+            if has_analysis and analysis_doc.get("data"):
+                analysis_data = analysis_doc["data"]
+                # Get first 2 fields for preview
+                analysis_preview = {
+                    k: v for k, v in list(analysis_data.items())[:2] 
+                    if k not in ['llm_provider', '_hash']
+                }
+            
+            # Check if embedding exists (shared collection)
+            embedding_doc = ps_embeddings_collection.find_one({"content_hash": ps_hash})
+            has_embedding = embedding_doc is not None
+            
+            ps_info = {
+                "id": ps["id"],
+                "title": ps["title"],
+                "description": ps.get("description", ""),
+                "outcomes": ps.get("outcomes", ""),
+                "has_analysis": has_analysis,
+                "analysis": analysis_preview,
+                "has_embedding": has_embedding
+            }
+            enriched_ps.append(ps_info)
+        
+        # Sort by title
+        enriched_ps.sort(key=lambda x: x["title"].lower())
+        
+        logger.info(f"✅ Fetched {len(enriched_ps)} problem statements (provider: {llm_provider})")
+        return jsonify(enriched_ps), 200
+        
     except Exception as e:
         logger.error(f"Error fetching problem statements: {str(e)}")
         logger.error(traceback.format_exc())
         return jsonify({"error": "Failed to fetch problem statements"}), 500
+
+
+# ============================================================================
+# NEW: GET /api/problem_statements/<ps_id>
+# Get detailed problem statement with full analysis
+# ============================================================================
+
+@app.route('/api/problem_statements/<ps_id>', methods=['GET'])
+def get_problem_statement_details(ps_id):
+    """Get detailed problem statement information with provider-specific analysis"""
+    try:
+        llm_provider = request.args.get('llm_provider', 'openai').lower()
+        
+        # Validate provider
+        if llm_provider not in ['openai', 'gemini']:
+            llm_provider = 'openai'
+        
+        # Get base problem statement
+        ps = ps_collection.find_one({"id": ps_id})
+        if not ps:
+            return jsonify({"error": "Problem statement not found"}), 404
+        
+        ps_hash = get_content_hash(ps['full_statement'])
+        
+        # Get provider-specific analysis
+        analysis_collection_name = f'ps_analysis_{llm_provider}'
+        analysis_collection = db[analysis_collection_name]
+        analysis_doc = analysis_collection.find_one({"content_hash": ps_hash})
+        analysis = analysis_doc.get("data") if analysis_doc else None
+        
+        # Get embedding (shared collection)
+        embedding_doc = ps_embeddings_collection.find_one({"content_hash": ps_hash})
+        has_embedding = embedding_doc is not None
+        embedding_dimensions = 0
+        
+        if has_embedding and "embedding" in embedding_doc:
+            embedding_dimensions = len(embedding_doc["embedding"])
+        
+        ps_details = {
+            "id": ps["id"],
+            "title": ps["title"],
+            "description": ps.get("description", ""),
+            "outcomes": ps.get("outcomes", ""),
+            "full_statement": ps.get("full_statement", ""),
+            "analysis": analysis,
+            "has_embedding": has_embedding,
+            "embedding_dimensions": embedding_dimensions,
+            "llm_provider": llm_provider
+        }
+        
+        logger.info(f"✅ Fetched details for PS: {ps_id} (provider: {llm_provider})")
+        return jsonify(ps_details), 200
+        
+    except Exception as e:
+        logger.error(f"Error fetching problem statement details: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({"error": "Failed to fetch problem statement details"}), 500
+
+
+# ============================================================================
+# NEW: DELETE /api/problem_statements/<ps_id>
+# Delete problem statement and all associated data
+# ============================================================================
+
+@app.route('/api/problem_statements/<ps_id>', methods=['DELETE'])
+def delete_problem_statement(ps_id):
+    """Delete problem statement and ALL associated data from all LLM providers"""
+    try:
+        # Find problem statement
+        ps = ps_collection.find_one({"id": ps_id})
+        if not ps:
+            return jsonify({"error": "Problem statement not found"}), 404
+        
+        ps_hash = get_content_hash(ps['full_statement'])
+        
+        # Delete from base problem statements collection
+        ps_collection.delete_one({"id": ps_id})
+        
+        # Delete from ALL provider-specific analysis collections
+        deleted_from = ["problem_statements"]
+        for provider in ['openai', 'gemini']:
+            analysis_collection_name = f'ps_analysis_{provider}'
+            analysis_collection = db[analysis_collection_name]
+            result = analysis_collection.delete_one({"content_hash": ps_hash})
+            if result.deleted_count > 0:
+                deleted_from.append(analysis_collection_name)
+        
+        # Delete from shared embeddings collection
+        result = ps_embeddings_collection.delete_one({"content_hash": ps_hash})
+        if result.deleted_count > 0:
+            deleted_from.append("ps_embeddings")
+        
+        logger.info(f"✅ Deleted problem statement '{ps['title']}' (ID: {ps_id}) and all associated data")
+        return jsonify({
+            "message": f"Problem statement deleted successfully",
+            "deleted_from": deleted_from
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error deleting problem statement: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({"error": "Failed to delete problem statement"}), 500
+
 
 
 @app.route('/api/clear_cache', methods=['POST'])
@@ -1449,88 +1598,132 @@ def not_found(error):
 
 @app.route('/api/vendors', methods=['GET'])
 def get_all_vendors():
-    """Get all vendors with their information"""
+    """Get all vendors with provider-specific capabilities"""
     try:
+        llm_provider = request.args.get('llm_provider', 'openai').lower()
+        
+        # Validate provider
+        if llm_provider not in ['openai', 'gemini']:
+            llm_provider = 'openai'
+        
+        # Get base vendors
         vendors = list(vendors_collection.find())
-
-        # Enrich vendor data with capabilities if available
+        
+        # Get provider-specific capabilities collection
+        capabilities_collection_name = f'vendor_capabilities_{llm_provider}'
+        capabilities_collection = db[capabilities_collection_name]
+        
         enriched_vendors = []
         for vendor in vendors:
             vendor_hash = get_content_hash(f"{vendor['name']}:{vendor['text']}")
-            capabilities = load_cached_analysis(vendor_capabilities_collection, vendor_hash)
-
+            
+            # Get capabilities from provider-specific collection
+            capabilities_doc = capabilities_collection.find_one({"content_hash": vendor_hash})
+            capabilities = capabilities_doc.get("data") if capabilities_doc else None
+            
+            # Get embedding (shared collection)
+            embedding_doc = vendor_embeddings_collection.find_one({"content_hash": vendor_hash})
+            has_embedding = embedding_doc is not None
+            
             vendor_info = {
                 "name": vendor["name"],
                 "text_preview": vendor["text"][:500] + "..." if len(vendor["text"]) > 500 else vendor["text"],
                 "full_text_length": len(vendor["text"]),
-                "capabilities": capabilities if capabilities else None,
-                "has_embedding": load_embedding(vendor_embeddings_collection, vendor_hash) is not None
+                "capabilities": capabilities,
+                "has_embedding": has_embedding
             }
             enriched_vendors.append(vendor_info)
-
-        # Sort by name
-        enriched_vendors.sort(key=lambda x: x["name"].lower())
-
-        logger.info(f"Fetched {len(enriched_vendors)} vendors")
+        
         return jsonify({
             "total": len(enriched_vendors),
-            "vendors": enriched_vendors
+            "vendors": enriched_vendors,
+            "llm_provider": llm_provider
         }), 200
+        
     except Exception as e:
         logger.error(f"Error fetching vendors: {str(e)}")
-        logger.error(traceback.format_exc())
         return jsonify({"error": "Failed to fetch vendors"}), 500
 
 
 @app.route('/api/vendors/<vendor_name>', methods=['GET'])
 def get_vendor_details(vendor_name):
-    """Get detailed information for a specific vendor"""
+    """Get detailed vendor information with provider-specific capabilities"""
     try:
+        llm_provider = request.args.get('llm_provider', 'openai').lower()
+        
+        # Validate provider
+        if llm_provider not in ['openai', 'gemini']:
+            llm_provider = 'openai'
+        
+        # Get base vendor
         vendor = vendors_collection.find_one({"name": vendor_name})
         if not vendor:
             return jsonify({"error": "Vendor not found"}), 404
-
+        
         vendor_hash = get_content_hash(f"{vendor['name']}:{vendor['text']}")
-        capabilities = load_cached_analysis(vendor_capabilities_collection, vendor_hash)
-        embedding = load_embedding(vendor_embeddings_collection, vendor_hash)
-
+        
+        # Get provider-specific capabilities
+        capabilities_collection_name = f'vendor_capabilities_{llm_provider}'
+        capabilities_collection = db[capabilities_collection_name]
+        capabilities_doc = capabilities_collection.find_one({"content_hash": vendor_hash})
+        capabilities = capabilities_doc.get("data") if capabilities_doc else None
+        
+        # Get embedding (shared collection)
+        embedding_doc = vendor_embeddings_collection.find_one({"content_hash": vendor_hash})
+        has_embedding = embedding_doc is not None
+        embedding_dimensions = 0
+        
+        if has_embedding and "embedding" in embedding_doc:
+            embedding_dimensions = len(embedding_doc["embedding"])
+        
         vendor_details = {
             "name": vendor["name"],
             "full_text": vendor["text"],
             "text_length": len(vendor["text"]),
             "capabilities": capabilities,
-            "has_embedding": embedding is not None,
-            "embedding_dimensions": len(embedding) if embedding is not None else 0
+            "has_embedding": has_embedding,
+            "embedding_dimensions": embedding_dimensions,
+            "llm_provider": llm_provider
         }
-
+        
         return jsonify(vendor_details), 200
+        
     except Exception as e:
         logger.error(f"Error fetching vendor details: {str(e)}")
-        logger.error(traceback.format_exc())
         return jsonify({"error": "Failed to fetch vendor details"}), 500
 
 
 @app.route('/api/vendors/<vendor_name>', methods=['DELETE'])
 def delete_vendor(vendor_name):
-    """Delete a vendor and its cached data"""
+    """Delete vendor and ALL associated data from all LLM providers"""
     try:
+        # Find vendor
         vendor = vendors_collection.find_one({"name": vendor_name})
         if not vendor:
             return jsonify({"error": "Vendor not found"}), 404
-
-        # Delete vendor
-        vendors_collection.delete_one({"name": vendor_name})
-
-        # Delete cached data
+        
         vendor_hash = get_content_hash(f"{vendor['name']}:{vendor['text']}")
-        vendor_capabilities_collection.delete_one({"content_hash": vendor_hash})
+        
+        # Delete from base vendors collection
+        vendors_collection.delete_one({"name": vendor_name})
+        
+        # Delete from ALL provider-specific capabilities collections
+        for provider in ['openai', 'gemini']:
+            capabilities_collection_name = f'vendor_capabilities_{provider}'
+            capabilities_collection = db[capabilities_collection_name]
+            capabilities_collection.delete_one({"content_hash": vendor_hash})
+        
+        # Delete from shared embeddings collection
         vendor_embeddings_collection.delete_one({"content_hash": vendor_hash})
-
-        logger.info(f"Deleted vendor: {vendor_name}")
-        return jsonify({"message": f"Vendor '{vendor_name}' deleted successfully"}), 200
+        
+        logger.info(f"✅ Deleted vendor '{vendor_name}' and all associated data")
+        return jsonify({
+            "message": f"Vendor '{vendor_name}' deleted successfully",
+            "deleted_from": ["vendors", "vendor_capabilities_openai", "vendor_capabilities_gemini", "vendor_embeddings"]
+        }), 200
+        
     except Exception as e:
         logger.error(f"Error deleting vendor: {str(e)}")
-        logger.error(traceback.format_exc())
         return jsonify({"error": "Failed to delete vendor"}), 500
     
 

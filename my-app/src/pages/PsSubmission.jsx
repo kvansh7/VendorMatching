@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { useLLM } from '../context/LLMProviderContext';
+
 
 const PsSubmission = () => {
   const [title, setTitle] = useState('');
@@ -8,6 +10,8 @@ const PsSubmission = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const { provider } = useLLM(); // Get current LLM provider from context
+  
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -20,6 +24,7 @@ const PsSubmission = () => {
         title,
         description,
         outcomes,
+        llm_provider: provider,
       });
       setMessage(res.data.message);
       setTitle('');

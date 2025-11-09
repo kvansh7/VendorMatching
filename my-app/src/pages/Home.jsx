@@ -22,16 +22,16 @@ function Home() {
             path: "/dashboard"
           },
           {
-            icon: "🏢",
-            title: "Vendor Submission",
-            description: "Effortlessly submit and manage vendor information",
-            path: "/vendor-submission"
-          },
-          {
             icon: "🔍",
             title: "Smart Matching",
             description: "AI-powered algorithms for the perfect vendor matches",
             path: "/vendor-matching"
+          },
+          {
+            icon: "🏢",
+            title: "Vendor Submission",
+            description: "Effortlessly submit and manage vendor information",
+            path: "/vendor-submission"
           },
           {
             icon: "👀",
@@ -40,10 +40,10 @@ function Home() {
             path: "/vendors"
           },
           {
-            icon: "🌐",
-            title: "Websearch Vendors",
-            description: "Search vendors on web",
-            path: "/vendorsearch"
+            icon: "📄",
+            title: "View Problem Statements",
+            description: "Check all project submissions quickly",
+            path: "/viewps"
           },
           {
             icon: "➕",

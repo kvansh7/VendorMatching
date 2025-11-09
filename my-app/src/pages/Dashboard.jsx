@@ -34,7 +34,7 @@ const Dashboard = () => {
       <h1 className="text-3xl font-bold text-white mb-6 text-center">System Overview</h1>
 
       {/* Stats Cards */}
-      <div className="grid md:grid-cols-3 gap-6">
+      <div className="grid md:grid-cols-2 gap-6">
         <div className="glass-card text-center p-6">
           <p className="text-muted mb-2">Total Vendors</p>
           <p className="text-4xl font-bold text-white">{data.total_vendors}</p>
@@ -43,10 +43,10 @@ const Dashboard = () => {
           <p className="text-muted mb-2">Total Problem Statements</p>
           <p className="text-4xl font-bold text-white">{data.total_ps}</p>
         </div>
-        <div className="glass-card text-center p-6">
+        {/* <div className="glass-card text-center p-6">
           <p className="text-muted mb-2">Cached Analyses</p>
           <p className="text-4xl font-bold text-white">{data.cached_analyses}</p>
-        </div>
+        </div> */}
       </div>
 
       {/* Recent Vendors */}

@@ -8,7 +8,6 @@ import MainLayout from "./layout/MainLayout";
 import Vendors from "./pages/Vendors";
 import { LLMProvider } from "./context/LLMProviderContext"; // 👈 add this import
 import VendorSearch from "./pages/VendorSearch";
-import TestLLM from "./pages/TestLLM";
 import Viewps from "./pages/ViewProblemStatements";
 
 function App() {
@@ -24,7 +23,6 @@ function App() {
           <Route path="/vendors" element={<Vendors />} />
           <Route path="/viewps" element={<Viewps />} />
           <Route path="/vendorsearch" element={<VendorSearch/>}/>
-          <Route path="/test" element={<TestLLM/>}/>
         </Route>
       </Routes>
     </LLMProvider>

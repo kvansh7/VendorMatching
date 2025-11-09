@@ -769,15 +769,12 @@ const VendorMatching = () => {
                                 addToComparison({ ...vendor, vendor_id: vendorId }, 'web');
                               }
                             }}
-                            className="w-20 h-20 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                            className="w- h-6 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
                           />
                           <div>
                             <h3 className="text-xl font-bold text-white">
                               {idx + 1}. {vendor.name || 'Unnamed Vendor'}
                             </h3>
-                            {vendor.description && (
-                              <p className="text-sm text-white/60 mt-1">{vendor.description}</p>
-                            )}
                           </div>
                         </div>
 
@@ -821,7 +818,7 @@ const VendorMatching = () => {
 
                       {/* Expanded Details */}
                       {expandedWeb === idx && (
-                        <div className="mt-6 pt-6 border-t border-white/20 space-y-5 text-sm">
+                        <div className="mt-10 pt-10 border-t border-white/20 space-y-5 text-sm">
                           {vendor.justification && (
                             <div>
                               <p className="font-semibold text-white/90 mb-2">Analysis</p>
@@ -851,21 +848,27 @@ const VendorMatching = () => {
                                   <li className="text-white/50">None identified</li>
                                 )}
                               </ul>
-                          {/* Web Sources */}
+                            </div>
+                          </div>
+
+                          {/* Web Sources
                           {vendor.web_sources?.length > 0 && (
                             <div className="pt-4 border-t border-white/10">
                               <p className="font-semibold text-blue-400 mb-3 text-sm">
-                                Sources ({vendor.web_sources.length})
+                                Sources
                               </p>
                               <div className="space-y-2">
                                 {vendor.web_sources
-                                  .sort((a, b) => {
-                                    const aIsWiki = a.url.toLowerCase().includes('wikipedia');
-                                    const bIsWiki = b.url.toLowerCase().includes('wikipedia');
-                                    if (aIsWiki && !bIsWiki) return 1;
-                                    if (!aIsWiki && bIsWiki) return -1;
-                                    return 0;
-                                  })
+                                  .filter(src => 
+                                    !src.url.toLowerCase().includes('wikipedia') &&
+                                    !src.url.toLowerCase().includes('linkedin') &&
+                                    !src.url.toLowerCase().includes('facebook') &&
+                                    !src.url.toLowerCase().includes('twitter') &&
+                                    !src.url.toLowerCase().includes('youtube') &&
+                                    !src.url.toLowerCase().includes('reddit') &&
+                                    !src.url.toLowerCase().includes('quora') &&
+                                    !src.url.toLowerCase().includes('github')
+                                  )
                                   .slice(0, 1)
                                   .map((src, i) => (
                                   <a
@@ -883,8 +886,7 @@ const VendorMatching = () => {
                                 ))}
                               </div>
                             </div>
-                          )}                            </div>
-                          </div>
+                          )} */}
                         </div>
                       )}
                     </div>

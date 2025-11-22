@@ -33,44 +33,30 @@ def search_vendors_with_openai(
         tools_raw = ps_analysis.get('required_tools_or_frameworks', [])
         requirements_raw = ps_analysis.get('key_technical_requirements', [])
 
+        # Helper to extract strings from nested structures
+        def extract_strings(data):
+            result = []
+            if isinstance(data, str):
+                result.append(data)
+            elif isinstance(data, list):
+                for item in data:
+                    if isinstance(item, str):
+                        result.append(item)
+                    elif isinstance(item, dict):
+                        result.extend(extract_strings(item))
+            elif isinstance(data, dict):
+                for v in data.values():
+                    result.extend(extract_strings(v))
+            return result
+
         # Normalize domains -> list[str]
-        domains = []
-        if isinstance(domains_raw, str):
-            domains = [domains_raw]
-        elif isinstance(domains_raw, list):
-            domains = domains_raw
-        elif isinstance(domains_raw, dict):
-            for v in domains_raw.values():
-                if isinstance(v, list):
-                    domains.extend(v)
-                elif isinstance(v, str):
-                    domains.append(v)
+        domains = extract_strings(domains_raw)
 
         # Normalize tools -> list[str]
-        tools = []
-        if isinstance(tools_raw, str):
-            tools = [tools_raw]
-        elif isinstance(tools_raw, list):
-            tools = tools_raw
-        elif isinstance(tools_raw, dict):
-            for v in tools_raw.values():
-                if isinstance(v, list):
-                    tools.extend(v)
-                elif isinstance(v, str):
-                    tools.append(v)
+        tools = extract_strings(tools_raw)
 
         # Normalize requirements -> list[str]
-        requirements = []
-        if isinstance(requirements_raw, str):
-            requirements = [requirements_raw]
-        elif isinstance(requirements_raw, list):
-            requirements = requirements_raw
-        elif isinstance(requirements_raw, dict):
-            for v in requirements_raw.values():
-                if isinstance(v, list):
-                    requirements.extend(v)
-                elif isinstance(v, str):
-                    requirements.append(v)
+        requirements = extract_strings(requirements_raw)
 
         # Create preview strings
         domains_preview = ', '.join(domains[:5]) if domains else 'software development'

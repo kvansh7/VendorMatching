@@ -78,7 +78,7 @@ def get_problem_statements():
             llm_provider = 'openai'
         
         # Get all problem statements
-        ps_list = list(ps_collection.find())
+        ps_list = list(ps_collection.find().sort("_id", -1))
         
         # Get provider-specific analysis collection
         analysis_collection_name = f'ps_analysis_{llm_provider}'
@@ -117,8 +117,6 @@ def get_problem_statements():
             }
             enriched_ps.append(ps_info)
         
-        # Sort by title
-        enriched_ps.sort(key=lambda x: x["title"].lower())
         
         logger.info(f"✅ Fetched {len(enriched_ps)} problem statements (provider: {llm_provider})")
         return jsonify(enriched_ps), 200

@@ -34,8 +34,12 @@ def get_dashboard():
             ps_analysis_collection.count_documents({})
         )
 
-        recent_vendors = [v['name'] for v in vendors[-3:]] if vendors else []
-        recent_ps = [ps['title'] for ps in ps_list[-3:]] if ps_list else []
+        # Sort by _id (which contains timestamp) in descending order and get last 3
+        recent_vendors_docs = list(vendors_collection.find().sort("_id", -1).limit(3))
+        recent_ps_docs = list(ps_collection.find().sort("_id", -1).limit(3))
+        
+        recent_vendors = [v['name'] for v in recent_vendors_docs]
+        recent_ps = [ps['title'] for ps in recent_ps_docs]
 
         data = {
             "total_vendors": len(vendors),

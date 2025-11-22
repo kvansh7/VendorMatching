@@ -13,9 +13,8 @@ const VendorMatching = () => {
   const [loadingPs, setLoadingPs] = useState(true);
   const { provider } = useLLM(); // Get current LLM provider from context
   
-  // Abort controllers for search operations
-  const repoAbortControllerRef = useRef(null);
-  const webAbortControllerRef = useRef(null);  
+  // Abort controller for web search
+  const abortControllerRef = useRef(null);  
   // Parameters - using percentage weights like original VendorMatching
   const [criteria, setCriteria] = useState([
     { key: 'domain_fit', label: 'Domain Fit', weight: 0.4 },
@@ -114,29 +113,14 @@ const VendorMatching = () => {
 
   const normalizeWeights = () => {
     const total = criteria.reduce((sum, c) => sum + Number(c.weight || 0), 0);
-    if (total <= 0) return;
-    
-    // First pass: divide by total and round to 3 decimals
-    const normalized = criteria.map((c) => ({
-      ...c,
-      weight: parseFloat((c.weight / total).toFixed(3)),
-    }));
-    
-    // Calculate the sum after rounding
-    const roundedSum = normalized.reduce((sum, c) => sum + c.weight, 0);
-    
-    // Find the difference from 1.0
-    const diff = 1.0 - roundedSum;
-    
-    // If there's a difference, adjust the largest weight
-    if (Math.abs(diff) > 0.0001) {
-      const maxIndex = normalized.reduce((maxIdx, c, idx, arr) => 
-        c.weight > arr[maxIdx].weight ? idx : maxIdx, 0
+    if (total > 0) {
+      setCriteria(
+        criteria.map((c) => ({
+          ...c,
+          weight: parseFloat((c.weight / total).toFixed(3)),
+        }))
       );
-      normalized[maxIndex].weight = parseFloat((normalized[maxIndex].weight + diff).toFixed(3));
     }
-    
-    setCriteria(normalized);
   };
 
   /* ================================================================== */
@@ -156,29 +140,16 @@ const VendorMatching = () => {
     return null;
   };
 
-  const isWeightValid = () => {
-    const total = criteria.reduce((sum, c) => sum + Number(c.weight || 0), 0) * 100;
-    return Math.abs(total - 100) < 0.01;
-  };
-
   /* ================================================================== */
   /*  REPOSITORY SEARCH                                                 */
   /* ================================================================== */
   
   const handleRepoSearch = async () => {
-    // Cancel previous request if exists
-    if (repoAbortControllerRef.current) {
-      repoAbortControllerRef.current.abort();
-    }
-    
     const error = validateInputs();
     if (error) {
       setRepoError(error);
       return;
     }
-
-    // Create new abort controller
-    repoAbortControllerRef.current = new AbortController();
 
     setLoadingRepo(true);
     setRepoError('');
@@ -195,21 +166,14 @@ const VendorMatching = () => {
         criteria: criteria,
       };
       
-      const { data } = await axios.post('/api/vendor_matching', payload, {
-        signal: repoAbortControllerRef.current.signal
-      });
+      const { data } = await axios.post('/api/vendor_matching', payload);
       setRepoResults(data);
     } catch (err) {
-      if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') {
-        console.log('Repository search cancelled');
-        return;
-      }
       const errorMsg = err.response?.data?.error || err.message || 'Error matching vendors from repository';
       setRepoError(errorMsg);
       console.error('Repository search error:', err);
     } finally {
       setLoadingRepo(false);
-      repoAbortControllerRef.current = null;
     }
   };
 
@@ -218,19 +182,11 @@ const VendorMatching = () => {
   /* ================================================================== */
   
   const handleWebSearch = async () => {
-    // Cancel previous request if exists
-    if (webAbortControllerRef.current) {
-      webAbortControllerRef.current.abort();
-    }
-    
     const error = validateInputs();
     if (error) {
       setWebError(error);
       return;
     }
-
-    // Create new abort controller
-    webAbortControllerRef.current = new AbortController();
 
     setLoadingWeb(true);
     setWebError('');
@@ -249,21 +205,14 @@ const VendorMatching = () => {
         })),
       };
       
-      const { data } = await axios.post('/api/web_search_vendors', payload, {
-        signal: webAbortControllerRef.current.signal
-      });
+      const { data } = await axios.post('/api/web_search_vendors', payload);
       setWebResults(data);
     } catch (err) {
-      if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') {
-        console.log('Web search cancelled');
-        return;
-      }
       const errorMsg = err.response?.data?.error || err.message || 'Error searching vendors on web';
       setWebError(errorMsg);
       console.error('Web search error:', err);
     } finally {
       setLoadingWeb(false);
-      webAbortControllerRef.current = null;
     }
   };
 
@@ -427,13 +376,6 @@ const VendorMatching = () => {
                 <select
                   value={selectedPsId}
                   onChange={(e) => {
-                    // Cancel ongoing searches
-                    if (repoAbortControllerRef.current) {
-                      repoAbortControllerRef.current.abort();
-                    }
-                    if (webAbortControllerRef.current) {
-                      webAbortControllerRef.current.abort();
-                    }
                     setSelectedPsId(e.target.value);
                     // Clear all previous results when new PS is selected
                     setRepoResults(null);
@@ -593,9 +535,9 @@ const VendorMatching = () => {
           <div className="grid md:grid-cols-2 gap-6">
             <button
               onClick={handleRepoSearch}
-              disabled={loadingRepo || !selectedPsId || !isWeightValid()}
+              disabled={loadingRepo || !selectedPsId}
               className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
-                loadingRepo || !selectedPsId || !isWeightValid()
+                loadingRepo || !selectedPsId
                   ? 'bg-white/20 cursor-not-allowed text-white/60'
                   : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg'
               }`}
@@ -605,9 +547,9 @@ const VendorMatching = () => {
 
             <button
               onClick={handleWebSearch}
-              disabled={loadingWeb || !selectedPsId || !isWeightValid()}
+              disabled={loadingWeb || !selectedPsId}
               className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
-                loadingWeb || !selectedPsId || !isWeightValid()
+                loadingWeb || !selectedPsId
                   ? 'bg-white/20 cursor-not-allowed text-white/60'
                   : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg'
               }`}
@@ -994,27 +936,13 @@ const VendorMatching = () => {
                       return (
                         <tr key={idx} className="border-b border-white/10 hover:bg-white/5">
                           <td className="py-3 px-3">
-                            {vendor.source === 'repository' ? (
-                              <span className="inline-flex px-2 py-1 rounded text-xs font-semibold bg-blue-600 text-white">
-                                Repo
-                              </span>
-                            ) : (
-                              vendor.web_sources && vendor.web_sources.length > 0 ? (
-                                <a
-                                  href={vendor.web_sources[0].url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex px-2 py-1 rounded text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 cursor-pointer transition-colors"
-                                  title={`Visit ${vendor.name}`}
-                                >
-                                  Web
-                                </a>
-                              ) : (
-                                <span className="inline-flex px-2 py-1 rounded text-xs font-semibold bg-purple-600 text-white">
-                                  Web
-                                </span>
-                              )
-                            )}
+                            <span className={`inline-flex px-2 py-1 rounded text-xs font-semibold ${
+                              vendor.source === 'repository' 
+                                ? 'bg-blue-600 text-white' 
+                                : 'bg-purple-600 text-white'
+                            }`}>
+                              {vendor.source === 'repository' ? 'Repo' : 'Web'}
+                            </span>
                           </td>
                           <td className="py-3 px-3 font-medium text-white">
                             {vendor.name || 'Unnamed'}

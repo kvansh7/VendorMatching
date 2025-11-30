@@ -1,13 +1,15 @@
 import logging
 from flask import Flask, jsonify
 from flask_cors import CORS
-from config.settings import MAX_CONTENT_LENGTH
+from flask_jwt_extended import JWTManager
+from config.settings import MAX_CONTENT_LENGTH, JWT_SECRET_KEY, JWT_ACCESS_TOKEN_EXPIRES
 
 # Import blueprints
 from routes.health import health_bp
 from routes.vendor import vendor_bp
 from routes.problem_statement import ps_bp
 from routes.matching import matching_bp
+from routes.auth import auth_bp
 
 # Configure logging
 logging.basicConfig(
@@ -22,9 +24,15 @@ CORS(app)
 
 # Configuration
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+app.config['JWT_SECRET_KEY'] = JWT_SECRET_KEY
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = JWT_ACCESS_TOKEN_EXPIRES
+
+# Initialize JWT
+jwt = JWTManager(app)
 
 # Register blueprints
 app.register_blueprint(health_bp)
+app.register_blueprint(auth_bp)
 app.register_blueprint(vendor_bp)
 app.register_blueprint(ps_bp)
 app.register_blueprint(matching_bp)
@@ -52,6 +60,18 @@ def internal_error(error):
     """Handle 500 errors"""
     logger.error(f"Internal server error: {str(error)}")
     return jsonify({"error": "Internal server error"}), 500
+
+@jwt.expired_token_loader
+def expired_token_callback(jwt_header, jwt_payload):
+    return jsonify({"error": "Token has expired"}), 401
+
+@jwt.invalid_token_loader
+def invalid_token_callback(error):
+    return jsonify({"error": "Invalid token"}), 401
+
+@jwt.unauthorized_loader
+def missing_token_callback(error):
+    return jsonify({"error": "Authorization token is missing"}), 401
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

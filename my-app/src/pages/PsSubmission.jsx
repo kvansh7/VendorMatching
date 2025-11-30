@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import { useLLM } from '../context/LLMProviderContext';
 
 
@@ -20,7 +20,7 @@ const PsSubmission = () => {
     setError('');
 
     try {
-      const res = await axios.post('/api/ps_submission', {
+      const res = await api.post('/api/ps_submission', {
         title,
         description,
         outcomes,

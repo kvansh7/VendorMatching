@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import { Search, Users, Brain, Database, ChevronDown, ChevronUp, Trash2, RefreshCw, X, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { useLLM } from '../context/LLMProviderContext';
 
@@ -25,7 +25,7 @@ export default function VendorsManagement() {
   const fetchVendors = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API_BASE}/vendors`, {
+      const res = await api.get(`${API_BASE}/vendors`, {
         params: { llm_provider: provider }
       });
       setVendors(res.data.vendors || []);
@@ -40,7 +40,7 @@ export default function VendorsManagement() {
   const fetchVendorDetails = async (vendorName) => {
     setLoadingDetails(true);
     try {
-      const res = await axios.get(
+      const res = await api.get(
         `${API_BASE}/vendors/${encodeURIComponent(vendorName)}`,
         { params: { llm_provider: provider } }
       );
@@ -55,7 +55,7 @@ export default function VendorsManagement() {
 
   const deleteVendor = async (vendorName) => {
     try {
-      await axios.delete(`${API_BASE}/vendors/${encodeURIComponent(vendorName)}`);
+      await api.delete(`${API_BASE}/vendors/${encodeURIComponent(vendorName)}`);
       showNotification(`Vendor "${vendorName}" deleted successfully`, 'success');
       fetchVendors();
       setDeleteConfirm(null);

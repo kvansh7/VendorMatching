@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import axios from "axios";
+import api from "../services/api";
 
 const UploadVendors = () => {
   const [vendorName, setVendorName] = useState("");
@@ -25,7 +25,7 @@ const UploadVendors = () => {
     formData.append("file", file);
 
     try {
-      const response = await axios.post(
+      const response = await api.post(
         "http://127.0.0.1:5000/upload_vendor",
         formData,
         {

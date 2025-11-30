@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -16,3 +17,7 @@ MONGODB_URI = os.getenv("MONGODB_URI")
 
 # API Keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# JWT Configuration
+JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'dev-secret-key-change-in-production')
+JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)

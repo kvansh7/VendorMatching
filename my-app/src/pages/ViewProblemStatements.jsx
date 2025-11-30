@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import { Search, FileText, Brain, Database, ChevronDown, ChevronUp, Trash2, RefreshCw, X, CheckCircle, XCircle, AlertCircle, Target } from 'lucide-react';
 import { useLLM } from '../context/LLMProviderContext';
 
@@ -24,7 +24,7 @@ export default function ViewProblemStatements() {
   const fetchProblemStatements = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API_BASE}/problem_statements`, {
+      const res = await api.get(`${API_BASE}/problem_statements`, {
         params: { llm_provider: provider }
       });
       setProblemStatements(res.data || []);
@@ -39,7 +39,7 @@ export default function ViewProblemStatements() {
   const fetchPSDetails = async (psId) => {
     setLoadingDetails(true);
     try {
-      const res = await axios.get(
+      const res = await api.get(
         `${API_BASE}/problem_statements/${psId}`,
         { params: { llm_provider: provider } }
       );
@@ -54,7 +54,7 @@ export default function ViewProblemStatements() {
 
   const deletePS = async (psId) => {
     try {
-      await axios.delete(`${API_BASE}/problem_statements/${psId}`);
+      await api.delete(`${API_BASE}/problem_statements/${psId}`);
       showNotification(`Problem statement deleted successfully`, 'success');
       fetchProblemStatements();
       setDeleteConfirm(null);

@@ -27,6 +27,7 @@ try:
     ps_analysis_collection = db['ps_analysis']
     vendor_embeddings_collection = db['vendor_embeddings']
     ps_embeddings_collection = db['ps_embeddings']
+    users_collection = db['users']
     # LLM-specific collections
     vendor_capabilities_openai = db["vendor_capabilities_openai"]
     vendor_capabilities_gemini = db["vendor_capabilities_gemini"]

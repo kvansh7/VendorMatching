@@ -4,6 +4,7 @@ import json
 import logging
 import traceback
 from flask import Blueprint, request, jsonify, send_file
+from flask_jwt_extended import jwt_required
 from bson import json_util
 from services.llm_service import get_llm_instance
 from services.vendor_service import process_vendor_profile, process_problem_statement
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 matching_bp = Blueprint('matching', __name__)
 
 @matching_bp.route('/api/vendor_matching', methods=['POST'])
+@jwt_required()
 def vendor_matching():
     """
     Match vendors to a problem statement with multi-criteria dynamic evaluation.
@@ -144,6 +146,7 @@ def vendor_matching():
         return jsonify({"error": "An internal error occurred during vendor matching"}), 500
 
 @matching_bp.route('/api/download_results/<ps_id>', methods=['GET'])
+@jwt_required()
 def download_results(ps_id):
     """
     Download matching results as JSON.
@@ -197,6 +200,7 @@ def download_results(ps_id):
         return jsonify({"error": "Failed to generate download"}), 500
 
 @matching_bp.route('/api/web_search_vendors', methods=['POST', 'OPTIONS'])
+@jwt_required()
 def web_search_vendors():
     """
     Search web for vendors matching the problem statement.

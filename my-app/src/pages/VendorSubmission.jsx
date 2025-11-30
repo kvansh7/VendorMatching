@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import { useLLM } from '../context/LLMProviderContext'; // ✅ Import context
 
 const VendorSubmission = () => {
@@ -29,7 +29,7 @@ const VendorSubmission = () => {
     formData.append('llm_provider', provider); // ✅ include LLM provider
 
     try {
-      const res = await axios.post('/api/vendor_submission', formData, {
+      const res = await api.post('/api/vendor_submission', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setMessage(res.data.message + ` (Provider: ${res.data.llm_provider})`);

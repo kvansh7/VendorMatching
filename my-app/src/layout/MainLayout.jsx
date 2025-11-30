@@ -1,9 +1,8 @@
 import React, { useState } from "react";
-import { Link, Outlet, useLocation } from "react-router-dom";
-import axios from "axios";
-import { useLLM } from "../context/LLMProviderContext"; // ✅ Import context hook
-
-axios.defaults.baseURL = "http://127.0.0.1:5000";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import api from "../services/api";
+import { useLLM } from "../context/LLMProviderContext";
+import { useAuth } from "../context/AuthContext";
 
 const menuItems = [
   { name: "Dashboard", path: "/dashboard", icon: (
@@ -30,14 +29,21 @@ const menuItems = [
 
 function MainLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
-  const { provider, setProvider } = useLLM(); // ✅ Use context hook
+  const { provider, setProvider } = useLLM();
+  const { user, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   const clearCache = async () => {
     setIsClearing(true);
     try {
-      await axios.post("/api/clear_cache");
+      await api.post("/api/clear_cache");
       alert("Cache cleared successfully");
     } catch (error) {
       console.error("Error clearing cache:", error);
@@ -109,8 +115,22 @@ function MainLayout() {
               {/* Divider */}
               <div className="ml-2 w-px h-8 bg-white/10"></div>
 
-              {/* LLM Provider Dropdown ✅ */}
-              <div className="flex items-center justify-center gap-2 ml-3">
+              {/* User Info & Logout */}
+              <div className="flex items-center gap-3 ml-3">
+                <span className="text-white/80 text-sm">{user?.name}</span>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 px-4 py-2.5 border border-white/20 hover:border-red-400 text-gray-300 hover:text-red-400 hover:bg-red-500/10 rounded-lg font-medium transition-all duration-200"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  <span className="text-sm">Logout</span>
+                </button>
+              </div>
+
+              {/* LLM Provider Dropdown */}
+              <div className="flex items-center justify-center gap-2">
                 <label className="text-white/80 text-sm">LLM Provider:</label>
                 <select
                   value={provider}
@@ -119,7 +139,6 @@ function MainLayout() {
                 >
                   <option value="openai">OpenAI</option>
                   <option value="gemini">Gemini</option>
-                  <option value="ollama">Ollama</option>
                 </select>
               </div>
 
@@ -168,24 +187,22 @@ function MainLayout() {
                   >
                     <option value="openai">OpenAI</option>
                     <option value="gemini">Gemini</option>
-                    <option value="ollama">Ollama</option>
                   </select>
                 </div>
 
-                {/* Mobile Clear Cache */}
-                <button
-                  onClick={() => {
-                    clearCache();
-                    setMenuOpen(false);
-                  }}
-                  disabled={isClearing}
-                  className="w-full flex items-center gap-3 px-4 py-3 border border-white/20 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg font-medium mt-2 disabled:opacity-50"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                  <span className="text-sm">{isClearing ? "Clearing..." : "Clear Cache"}</span>
-                </button>
+                {/* Mobile User & Logout */}
+                <div className="px-4 pt-3 border-t border-white/10">
+                  <p className="text-white/80 text-sm mb-2">Logged in as: {user?.name}</p>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-4 py-3 border border-red-400/50 text-red-400 hover:bg-red-500/10 rounded-lg font-medium"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    <span className="text-sm">Logout</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>

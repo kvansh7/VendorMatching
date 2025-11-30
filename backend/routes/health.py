@@ -38,8 +38,8 @@ def get_dashboard():
         recent_vendors_docs = list(vendors_collection.find().sort("_id", -1).limit(3))
         recent_ps_docs = list(ps_collection.find().sort("_id", -1).limit(3))
         
-        recent_vendors = [v['name'] for v in recent_vendors_docs]
-        recent_ps = [ps['title'] for ps in recent_ps_docs]
+        recent_vendors = [{"name": v['name']} for v in recent_vendors_docs]
+        recent_ps = [{"id": ps['id'], "title": ps['title']} for ps in recent_ps_docs]
 
         data = {
             "total_vendors": len(vendors),

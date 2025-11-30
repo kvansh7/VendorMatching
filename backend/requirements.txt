@@ -6,6 +6,10 @@ pymongo
 dnspython
 requests
 
+# Authentication
+flask-jwt-extended
+bcrypt
+
 # LangChain + Providers
 langchain
 langchain-core

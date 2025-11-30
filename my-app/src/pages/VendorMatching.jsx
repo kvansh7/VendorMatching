@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import { useLLM } from '../context/LLMProviderContext';
 
 const VendorMatching = () => {
@@ -61,7 +61,7 @@ const VendorMatching = () => {
   useEffect(() => {
     const fetchPs = async () => {
       try {
-        const { data } = await axios.get('/api/problem_statements');
+        const { data } = await api.get('/api/problem_statements');
         setPsOptions(data);
       } catch (err) {
         setRepoError('Failed to load problem statements');
@@ -195,7 +195,7 @@ const VendorMatching = () => {
         criteria: criteria,
       };
       
-      const { data } = await axios.post('/api/vendor_matching', payload, {
+      const { data } = await api.post('/api/vendor_matching', payload, {
         signal: repoAbortControllerRef.current.signal
       });
       setRepoResults(data);
@@ -249,7 +249,7 @@ const VendorMatching = () => {
         })),
       };
       
-      const { data } = await axios.post('/api/web_search_vendors', payload, {
+      const { data } = await api.post('/api/web_search_vendors', payload, {
         signal: webAbortControllerRef.current.signal
       });
       setWebResults(data);

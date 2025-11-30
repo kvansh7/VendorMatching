@@ -3,6 +3,7 @@ import hashlib
 import logging
 import traceback
 from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required
 from services.llm_service import get_llm_instance
 from services.vendor_service import process_problem_statement
 from utils.helpers import get_content_hash
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 ps_bp = Blueprint('problem_statement', __name__)
 
 @ps_bp.route('/api/ps_submission', methods=['POST'])
+@jwt_required()
 def ps_submission():
     """
     Submit and process a problem statement.
@@ -68,6 +70,7 @@ def ps_submission():
 
 
 @ps_bp.route('/api/problem_statements', methods=['GET'])
+@jwt_required()
 def get_problem_statements():
     """Get all problem statements with provider-specific analysis info"""
     try:
@@ -128,6 +131,7 @@ def get_problem_statements():
 
 
 @ps_bp.route('/api/problem_statements/<ps_id>', methods=['GET'])
+@jwt_required()
 def get_problem_statement_details(ps_id):
     """Get detailed problem statement information with provider-specific analysis"""
     try:
@@ -180,6 +184,7 @@ def get_problem_statement_details(ps_id):
 
 
 @ps_bp.route('/api/problem_statements/<ps_id>', methods=['DELETE'])
+@jwt_required()
 def delete_problem_statement(ps_id):
     """Delete problem statement and ALL associated data from all LLM providers"""
     try:

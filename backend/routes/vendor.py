@@ -2,6 +2,7 @@ import os
 import logging
 import traceback
 from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required
 from werkzeug.utils import secure_filename
 from services.llm_service import get_llm_instance
 from services.vendor_service import process_vendor_profile
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 vendor_bp = Blueprint('vendor', __name__)
 
 @vendor_bp.route('/api/vendor_submission', methods=['POST'])
+@jwt_required()
 def vendor_submission():
     """
     Submit and process vendor profile.
@@ -63,6 +65,7 @@ def vendor_submission():
 
 
 @vendor_bp.route('/api/vendors', methods=['GET'])
+@jwt_required()
 def get_all_vendors():
     """Get all vendors with provider-specific capabilities"""
     try:
@@ -112,6 +115,7 @@ def get_all_vendors():
 
 
 @vendor_bp.route('/api/vendors/<vendor_name>', methods=['GET'])
+@jwt_required()
 def get_vendor_details(vendor_name):
     """Get detailed vendor information with provider-specific capabilities"""
     try:
@@ -160,6 +164,7 @@ def get_vendor_details(vendor_name):
 
 
 @vendor_bp.route('/api/vendors/<vendor_name>', methods=['DELETE'])
+@jwt_required()
 def delete_vendor(vendor_name):
     """Delete vendor and ALL associated data from all LLM providers"""
     try:

@@ -6,26 +6,35 @@ import VendorMatching from "./pages/VendorMatching";
 import PsSubmission from "./pages/PsSubmission";
 import MainLayout from "./layout/MainLayout";
 import Vendors from "./pages/Vendors";
-import { LLMProvider } from "./context/LLMProviderContext"; // 👈 add this import
 import VendorSearch from "./pages/VendorSearch";
 import Viewps from "./pages/ViewProblemStatements";
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
+import { LLMProvider } from "./context/LLMProviderContext";
+import { AuthProvider } from "./context/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
   return (
-    <LLMProvider> 
-      <Routes>
-        <Route element={<MainLayout />}>
-          <Route path="/" element={<Home />} />
-          <Route path="/ps-submission" element={<PsSubmission />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/vendor-submission" element={<VendorSubmission />} />
-          <Route path="/vendor-matching" element={<VendorMatching />} />
-          <Route path="/vendors" element={<Vendors />} />
-          <Route path="/viewps" element={<Viewps />} />
-          <Route path="/vendorsearch" element={<VendorSearch/>}/>
-        </Route>
-      </Routes>
-    </LLMProvider>
+    <AuthProvider>
+      <LLMProvider>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+          
+          <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
+            <Route path="/" element={<Home />} />
+            <Route path="/ps-submission" element={<PsSubmission />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/vendor-submission" element={<VendorSubmission />} />
+            <Route path="/vendor-matching" element={<VendorMatching />} />
+            <Route path="/vendors" element={<Vendors />} />
+            <Route path="/viewps" element={<Viewps />} />
+            <Route path="/vendorsearch" element={<VendorSearch />} />
+          </Route>
+        </Routes>
+      </LLMProvider>
+    </AuthProvider>
   );
 }
 

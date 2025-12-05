@@ -22,6 +22,19 @@ export default function VendorsManagement() {
     fetchVendors(); 
   }, [provider]);
 
+  useEffect(() => {
+    if (selectedVendor || deleteConfirm) {
+      document.body.style.overflow = 'hidden';
+      document.body.classList.add('modal-open');
+    } else {
+      document.body.style.overflow = 'unset';
+      document.body.classList.remove('modal-open');
+    }
+    return () => { 
+      document.body.style.overflow = 'unset';
+      document.body.classList.remove('modal-open');
+    };
+  }, [selectedVendor, deleteConfirm]);
   const fetchVendors = async () => {
     setLoading(true);
     try {
@@ -153,7 +166,7 @@ export default function VendorsManagement() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-40 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 z-[9999] backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 text-gray-200 rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-700">
             <div className="flex items-center gap-3 mb-4">
               <div className="bg-red-600/20 p-3 rounded-full">
@@ -185,7 +198,7 @@ export default function VendorsManagement() {
 
       {/* Vendor Details Modal */}
       {selectedVendor && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-6 overflow-y-auto">
+        <div className="fixed inset-0 bg-black/80 z-[9999] backdrop-blur-sm flex items-center justify-center p-6 overflow-y-auto">
           <div className="bg-slate-900 rounded-2xl shadow-2xl max-w-6xl w-full text-gray-200 overflow-hidden border border-slate-700">
             
             {/* Header */}
@@ -218,7 +231,7 @@ export default function VendorsManagement() {
             </div>
 
             {/* Content */}
-            <div className="p-8 grid grid-cols-1 lg:grid-cols-2 gap-8 max-h-[75vh] overflow-y-auto">
+            <div className="p-8 pb-12 grid grid-cols-1 lg:grid-cols-2 gap-8 max-h-[75vh] overflow-y-auto">
               
               {/* Capabilities Section */}
               <div className="space-y-6">
@@ -272,7 +285,7 @@ export default function VendorsManagement() {
                   <Database size={24} className="text-green-400" />
                   Full Profile Text
                 </h3>
-                <div className="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg overflow-auto max-h-[60vh]">
+                <div className="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg overflow-auto max-h-[75vh]">
                   <pre className="text-gray-300 text-sm whitespace-pre-wrap font-mono leading-relaxed">
                     {selectedVendor.full_text || 'No text available'}
                   </pre>

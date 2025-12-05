@@ -21,6 +21,19 @@ export default function ViewProblemStatements() {
     fetchProblemStatements(); 
   }, [provider]);
 
+  useEffect(() => {
+    if (selectedPS || deleteConfirm) {
+      document.body.style.overflow = 'hidden';
+      document.body.classList.add('modal-open');
+    } else {
+      document.body.style.overflow = 'unset';
+      document.body.classList.remove('modal-open');
+    }
+    return () => { 
+      document.body.style.overflow = 'unset';
+      document.body.classList.remove('modal-open');
+    };
+  }, [selectedPS, deleteConfirm]);
   const fetchProblemStatements = async () => {
     setLoading(true);
     try {
@@ -145,7 +158,7 @@ export default function ViewProblemStatements() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-40 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 z-[9999] backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 text-gray-200 rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-700">
             <div className="flex items-center gap-3 mb-4">
               <div className="bg-red-600/20 p-3 rounded-full">
@@ -177,7 +190,7 @@ export default function ViewProblemStatements() {
 
       {/* Problem Statement Details Modal */}
       {selectedPS && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-6 overflow-y-auto">
+        <div className="fixed inset-0 bg-black/80 z-[9999] backdrop-blur-sm flex items-center justify-center p-6 overflow-y-auto">
           <div className="bg-slate-900 rounded-2xl shadow-2xl max-w-6xl w-full text-gray-200 overflow-hidden border border-slate-700">
             
             {/* Header */}
@@ -210,7 +223,7 @@ export default function ViewProblemStatements() {
             </div>
 
             {/* Content */}
-            <div className="p-8 grid grid-cols-1 lg:grid-cols-2 gap-8 max-h-[75vh] overflow-y-auto">
+            <div className="p-8 pb-12 grid grid-cols-1 lg:grid-cols-2 gap-8 max-h-[75vh] overflow-y-auto">
               
               {/* Analysis Section */}
               <div className="space-y-6">

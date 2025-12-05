@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Hide navbar when modal is open */
+body.modal-open nav,
+body.modal-open footer {
+  display: none !important;
+}
 /* ---------- paste below into src/index.css ---------- */
 
 /* Neutral professional palette */

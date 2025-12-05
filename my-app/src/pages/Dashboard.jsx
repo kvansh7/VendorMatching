@@ -37,6 +37,20 @@ const Dashboard = () => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    if (selectedVendor || selectedPS) {
+      document.body.style.overflow = 'hidden';
+      document.body.classList.add('modal-open');
+    } else {
+      document.body.style.overflow = 'unset';
+      document.body.classList.remove('modal-open');
+    }
+    return () => { 
+      document.body.style.overflow = 'unset';
+      document.body.classList.remove('modal-open');
+    };
+  }, [selectedVendor, selectedPS]);
+
   const fetchVendorDetails = async (vendorName) => {
     setLoadingDetails(true);
     try {
@@ -238,7 +252,7 @@ const Dashboard = () => {
 
       {/* Vendor Details Modal */}
       {selectedVendor && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-6 overflow-y-auto">
+        <div className="fixed inset-0 bg-black/80 z-[9999] backdrop-blur-sm flex items-center justify-center p-6 overflow-y-auto">
           <div className="bg-slate-900 rounded-2xl shadow-2xl max-w-6xl w-full text-gray-200 overflow-hidden border border-slate-700">
             <div className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 p-6 flex justify-between items-start border-b border-slate-700">
               <div className="flex-1">
@@ -268,7 +282,7 @@ const Dashboard = () => {
               </button>
             </div>
 
-            <div className="p-8 grid grid-cols-1 lg:grid-cols-2 gap-8 max-h-[75vh] overflow-y-auto">
+            <div className="p-8 pb-12 grid grid-cols-1 lg:grid-cols-2 gap-8 max-h-[75vh] overflow-y-auto">
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <h3 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -319,7 +333,7 @@ const Dashboard = () => {
                   <Database size={24} className="text-green-400" />
                   Full Profile Text
                 </h3>
-                <div className="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg overflow-auto max-h-[60vh]">
+                <div className="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg overflow-auto max-h-[75vh]">
                   <pre className="text-gray-300 text-sm whitespace-pre-wrap font-mono leading-relaxed">
                     {selectedVendor.full_text || 'No text available'}
                   </pre>
@@ -332,7 +346,7 @@ const Dashboard = () => {
 
       {/* PS Details Modal */}
       {selectedPS && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-6 overflow-y-auto">
+        <div className="fixed inset-0 bg-black/80 z-[9999] backdrop-blur-sm flex items-center justify-center p-6 overflow-y-auto">
           <div className="bg-slate-900 rounded-2xl shadow-2xl max-w-6xl w-full text-gray-200 overflow-hidden border border-slate-700">
             <div className="bg-gradient-to-r from-blue-900/50 to-indigo-900/50 p-6 flex justify-between items-start border-b border-slate-700">
               <div className="flex-1">
@@ -362,7 +376,7 @@ const Dashboard = () => {
               </button>
             </div>
 
-            <div className="p-8 grid grid-cols-1 lg:grid-cols-2 gap-8 max-h-[75vh] overflow-y-auto">
+            <div className="p-8 pb-12 grid grid-cols-1 lg:grid-cols-2 gap-8 max-h-[75vh] overflow-y-auto">
               <div className="space-y-6">
                 <h3 className="text-2xl font-bold text-white flex items-center gap-2">
                   <FileText size={24} className="text-blue-400" />
